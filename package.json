@@ -22,6 +22,8 @@
     "mongoose": "^8.15.2",
     "multer": "^2.0.1",
     "nodemailer": "^7.0.3",
+    "openai": "^4.28.0",
+    "pdf.js-extract": "^0.2.1",
     "pdf-parse": "^1.1.1"
   },
   "devDependencies": {

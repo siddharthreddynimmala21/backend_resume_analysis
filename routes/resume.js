@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import pdf from 'pdf-parse';
+import { PDFExtract } from 'pdf.js-extract';
 
 const router = express.Router();
 const upload = multer({ 
@@ -9,6 +9,8 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024 // 10MB file size limit
   }
 });
+
+const pdfExtract = new PDFExtract();
 
 /**
  * Middleware to log detailed request information
@@ -78,8 +80,8 @@ router.post('/parse',
     // Parse PDF to extract text
     let extractedText = '';
     try {
-      const pdfData = await pdf(req.file.buffer);
-      extractedText = pdfData.text.trim();
+      const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
+      extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
     } catch (parseError) {
       console.error('PDF Parsing Specific Error:', parseError);
       return res.status(400).json({ 

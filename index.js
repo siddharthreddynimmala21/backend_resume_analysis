@@ -133,18 +133,18 @@ app.use((req, res) => {
 const port = process.env.PORT || 3000;
 const server = app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
-    console.log('\nAvailable endpoints:');
-    console.log(`1. GET  http://localhost:${port}/      -> Test server`);
-    console.log(`2. GET  http://localhost:${port}/test  -> Test endpoint`);
-    console.log(`3. POST http://localhost:${port}/api/chat -> Gemini AI chat\n`);
-    console.log('To test the chat endpoint in Postman:');
-    console.log('1. Set method to POST');
-    console.log('2. Use URL: http://localhost:3000/api/chat');
-    console.log('3. Set Headers: Content-Type: application/json');
-    console.log('4. Set Body (raw JSON):');
-    console.log('   {');
-    console.log('      "prompt": "Who is Virat Kohli?"');
-    console.log('   }');
+    // console.log('\nAvailable endpoints:');
+    // console.log(`1. GET  http://localhost:${port}/      -> Test server`);
+    // console.log(`2. GET  http://localhost:${port}/test  -> Test endpoint`);
+    // console.log(`3. POST http://localhost:${port}/api/chat -> Gemini AI chat\n`);
+    // console.log('To test the chat endpoint in Postman:');
+    // console.log('1. Set method to POST');
+    // console.log('2. Use URL: http://localhost:3000/api/chat');
+    // console.log('3. Set Headers: Content-Type: application/json');
+    // console.log('4. Set Body (raw JSON):');
+    // console.log('   {');
+    // console.log('      "prompt": "Who is Virat Kohli?"');
+    // console.log('   }');
 });
 
 // Handle server errors
