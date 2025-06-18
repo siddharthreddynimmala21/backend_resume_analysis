@@ -5,6 +5,16 @@ import { sendOTPEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 
+// Test endpoint for auth routes
+router.get('/test', (req, res) => {
+    console.log('Auth test endpoint hit');
+    res.json({ 
+        message: 'Auth routes are working!',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
 // Register new user
 router.post('/register', async (req, res) => {
     try {
