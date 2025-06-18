@@ -6,7 +6,8 @@ const router = express.Router();
 const upload = multer({ 
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB file size limit
+    fileSize: 10 * 1024 * 1024, // 10MB file size limit
+    fieldSize: 10 * 1024 * 1024 // 10MB field size limit
   }
 });
 
@@ -20,6 +21,8 @@ const logRequestDetails = (req, res, next) => {
   console.log('Request Method:', req.method);
   console.log('Request Path:', req.path);
   console.log('Request Headers:', req.headers);
+  console.log('Request Origin:', req.get('origin'));
+  console.log('Request Host:', req.get('host'));
   
   // Log request body if it exists
   if (req.body) {
@@ -30,10 +33,32 @@ const logRequestDetails = (req, res, next) => {
 };
 
 /**
+ * Timeout middleware for large file uploads
+ */
+const timeout = (req, res, next) => {
+  req.setTimeout(30000); // 30 seconds
+  res.setTimeout(30000);
+  next();
+};
+
+/**
+ * Test endpoint to verify the resume route is working
+ */
+router.get('/test', (req, res) => {
+  console.log('Resume test endpoint hit');
+  res.json({ 
+    message: 'Resume route is working!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+/**
  * Route to parse uploaded PDF resume
  * Extracts full text content from the PDF
  */
 router.post('/parse', 
+  timeout,
   logRequestDetails,
   upload.single('resume'), 
   async (req, res) => {
@@ -80,8 +105,10 @@ router.post('/parse',
     // Parse PDF to extract text
     let extractedText = '';
     try {
+      console.log('Starting PDF extraction...');
       const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
       extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
+      console.log('PDF extraction completed successfully');
     } catch (parseError) {
       console.error('PDF Parsing Specific Error:', parseError);
       return res.status(400).json({ 

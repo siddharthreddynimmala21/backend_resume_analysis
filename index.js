@@ -25,9 +25,12 @@ const app = express();
 
 // Middleware
 app.use(cors({
-    origin: '*',
+    origin: process.env.NODE_ENV === 'production' 
+      ? [process.env.FRONTEND_URL || '*', 'http://localhost:3000', 'http://localhost:5173']
+      : '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
 }));
 app.use(express.json());
 
