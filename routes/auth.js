@@ -185,4 +185,62 @@ router.post('/resend-otp', async (req, res) => {
     }
 });
 
+// Forgot Password - Step 1: Send OTP
+router.post('/forgot-password', async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        // Generate and send OTP
+        const otp = user.generateOTP();
+        await user.save();
+        if (!await sendOTPEmail(email, otp)) {
+            return res.status(500).json({ message: 'Failed to send OTP email' });
+        }
+        res.status(200).json({ message: 'OTP sent successfully', email });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// Forgot Password - Step 2: Verify OTP
+router.post('/verify-reset-otp', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        if (!user.verifyOTP(otp)) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+        // Do not clear OTP yet, allow for password reset
+        res.status(200).json({ message: 'OTP verified successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
+// Forgot Password - Step 3: Reset Password
+router.post('/reset-password', async (req, res) => {
+    try {
+        const { email, otp, password } = req.body;
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        if (!user.verifyOTP(otp)) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+        user.password = password;
+        user.clearOTP();
+        await user.save();
+        res.status(200).json({ message: 'Password reset successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+
 export default router;
