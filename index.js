@@ -23,16 +23,36 @@ const __dirname = dirname(__filename);
 
 const app = express();
 
-// Middleware
+// Middleware - Simplified CORS configuration
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-      ? [process.env.FRONTEND_URL || '*', 'http://localhost:3000', 'http://localhost:5173']
-      : '*',
+    origin: true, // Allow all origins for now
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: false // Set to false to avoid CORS issues
 }));
+
+// Add preflight handling
+app.options('*', cors());
+
 app.use(express.json());
+
+// Enhanced logging middleware for debugging
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    console.log('Request Headers:', {
+        origin: req.get('origin'),
+        host: req.get('host'),
+        'user-agent': req.get('user-agent'),
+        'content-type': req.get('content-type')
+    });
+    
+    // Log CORS preflight requests
+    if (req.method === 'OPTIONS') {
+        console.log('CORS preflight request detected');
+    }
+    
+    next();
+});
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/resume-ai', {
@@ -42,12 +62,6 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/resume-ai
     console.log('Connected to MongoDB');
 }).catch((error) => {
     console.error('MongoDB connection error:', error);
-});
-
-// Logging middleware
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    next();
 });
 
 // Initialize Gemini AI
