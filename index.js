@@ -31,9 +31,6 @@ app.use(cors({
     credentials: false // Set to false to avoid CORS issues
 }));
 
-// Add preflight handling
-app.options('*', cors());
-
 app.use(express.json());
 
 // Enhanced logging middleware for debugging
