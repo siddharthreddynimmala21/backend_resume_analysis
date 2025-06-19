@@ -464,7 +464,7 @@ router.post('/match-skills',
       }
       // 4. Prepare the prompt for skill matching
       const jobDescription = req.body.jobDescription;
-      const matchPrompt = `Skills: ${skillsList.join(', ')}\n\nJob Description: ${jobDescription}\n\nFollow these instructions strictly:\n1. Match the candidate's skills with the job requirements.\n2. Do not make assumptions about skills not clearly mentioned.\n3. Evaluate only based on the overlap of skills (not years of experience, education, or formatting).\n4. Return:\n   - A neutral and objective match percentage score out of 100.\n   - A list of matching skills.\n   - A list of missing skills (required but not found in the resume).\n   - A short one-line justification for the score.`;
+      const matchPrompt = `Skills: ${skillsList.join(', ')}\n\nJob Description: ${jobDescription}\n\nFollow these instructions strictly:\n1. Match the candidate's skills with the job requirements.\n2. Do not make assumptions about skills not clearly mentioned.\n3. Evaluate only based on the overlap of skills (not years of experience, education, or formatting).\n4. Return:\n   - A neutral and objective match percentage score out of 100.\n   - A list of matching skills.\n   - A list of missing skills (required but not found in the resume).\n   - A short one-line justification for the score.\n5. Also, provide 2-3 actionable suggestions for the candidate to improve their skill match score for this job, based on the missing skills or gaps.\n\nReturn the result in the following format:\nSkill Match Report:\n<report>\n\nSuggestions to Improve:\n<suggestions>`;
       let matchResult;
       try {
         const matchAIResult = await model.generateContent(matchPrompt);
@@ -473,11 +473,20 @@ router.post('/match-skills',
       } catch (err) {
         return res.status(500).json({ error: 'Failed to match skills with job description', details: err.message });
       }
-      // 5. Return the result
+      // 5. Parse suggestions from the result
+      let suggestions = '';
+      let skillMatchReport = matchResult;
+      const suggestionsMatch = matchResult.match(/Suggestions to Improve:\n([\s\S]*)/i);
+      if (suggestionsMatch) {
+        suggestions = suggestionsMatch[1].trim();
+        skillMatchReport = matchResult.replace(/Suggestions to Improve:[\s\S]*/i, '').trim();
+      }
+      // 6. Return the result
       res.json({
         message: 'Skill match analysis complete',
         skills: skillsList,
-        matchReport: matchResult
+        matchReport: skillMatchReport,
+        suggestions
       });
     } catch (error) {
       res.status(500).json({ error: 'Internal Server Error', details: error.message });
@@ -526,5 +535,169 @@ router.post('/role-relevance', async (req, res) => {
     res.status(500).json({ error: 'Failed to get role relevance score', details: error.message });
   }
 });
+
+/**
+ * Route to extract and optimize projects section using Gemini
+ */
+router.post('/projects', 
+  timeout,
+  logRequestDetails,
+  upload.single('resume'), 
+  async (req, res) => {
+    try {
+      // 1. Validate file
+      if (!req.file) {
+        return res.status(400).json({ error: 'No resume file uploaded' });
+      }
+      if (req.file.mimetype !== 'application/pdf') {
+        return res.status(400).json({ error: 'Only PDF files are allowed' });
+      }
+      if (!req.file.buffer || req.file.buffer.length === 0) {
+        return res.status(400).json({ error: 'The uploaded PDF file is empty or corrupted' });
+      }
+      // 2. Extract text from PDF
+      let extractedText = '';
+      try {
+        const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
+        extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
+      } catch (parseError) {
+        return res.status(400).json({ error: 'Unable to extract text from the PDF', details: parseError.message });
+      }
+      if (!extractedText) {
+        return res.status(400).json({ error: 'No text could be extracted from the PDF' });
+      }
+      // 3. Use Gemini to extract the projects section
+      const extractProjectsPrompt = `Extract the full text of the 'Projects' section (or similar, e.g., 'Academic Projects', 'Personal Projects') from the following resume text. Only return the project descriptions, no extra text.\n\nResume Text:\n${extractedText}`;
+      let projectsText = '';
+      try {
+        const projectsResult = await model.generateContent(extractProjectsPrompt);
+        const projectsResponse = await projectsResult.response;
+        projectsText = projectsResponse.text().trim();
+      } catch (err) {
+        return res.status(500).json({ error: 'Failed to extract projects from resume', details: err.message });
+      }
+      if (!projectsText) {
+        return res.status(400).json({ error: 'No projects section found in the resume.' });
+      }
+      // 4. Use Gemini to optimize the projects section for ATS
+      const atsPrompt = `You are an expert in resume optimization for Applicant Tracking Systems (ATS).
+
+Your task is to analyze the following project descriptions extracted from a candidate's resume and provide feedback and improvements to make them more impactful and ATS-friendly.
+
+Follow these instructions strictly:
+1. Keep the tone professional and concise.
+2. Use action verbs and include measurable impact or metrics where appropriate.
+3. Suggest relevant technical keywords if missing (but do not invent or assume details).
+4. Ensure alignment with industry best practices for project descriptions in resumes.
+5. Only focus on improving the content for better visibility in ATS scans.
+
+Return:
+- The original project description.
+- An improved version.
+- A brief explanation of what was changed and why.
+
+Projects:
+${projectsText}`;
+      let atsResultText = '';
+      try {
+        const atsResult = await model.generateContent(atsPrompt);
+        const atsResponse = await atsResult.response;
+        atsResultText = atsResponse.text().trim();
+      } catch (err) {
+        return res.status(500).json({ error: 'Failed to analyze projects for ATS', details: err.message });
+      }
+      // 5. Return the result
+      res.json({
+        message: 'Projects ATS analysis complete',
+        projects: projectsText,
+        atsAnalysis: atsResultText
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    }
+  }
+);
+
+/**
+ * Route to extract and optimize work experience section using Gemini
+ */
+router.post('/work-experience', 
+  timeout,
+  logRequestDetails,
+  upload.single('resume'), 
+  async (req, res) => {
+    try {
+      // 1. Validate file
+      if (!req.file) {
+        return res.status(400).json({ error: 'No resume file uploaded' });
+      }
+      if (req.file.mimetype !== 'application/pdf') {
+        return res.status(400).json({ error: 'Only PDF files are allowed' });
+      }
+      if (!req.file.buffer || req.file.buffer.length === 0) {
+        return res.status(400).json({ error: 'The uploaded PDF file is empty or corrupted' });
+      }
+      // 2. Extract text from PDF
+      let extractedText = '';
+      try {
+        const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
+        extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
+      } catch (parseError) {
+        return res.status(400).json({ error: 'Unable to extract text from the PDF', details: parseError.message });
+      }
+      if (!extractedText) {
+        return res.status(400).json({ error: 'No text could be extracted from the PDF' });
+      }
+      // 3. Use Gemini to extract the work experience section
+      const extractWorkExpPrompt = `Extract the full text of the 'Work Experience' section (or similar, e.g., 'Professional Experience', 'Employment History') from the following resume text. Only return the work experience descriptions, no extra text.\n\nResume Text:\n${extractedText}`;
+      let workExpText = '';
+      try {
+        const workExpResult = await model.generateContent(extractWorkExpPrompt);
+        const workExpResponse = await workExpResult.response;
+        workExpText = workExpResponse.text().trim();
+      } catch (err) {
+        return res.status(500).json({ error: 'Failed to extract work experience from resume', details: err.message });
+      }
+      if (!workExpText) {
+        return res.status(400).json({ error: 'No work experience section found in the resume.' });
+      }
+      // 4. Use Gemini to optimize the work experience section for ATS
+      const atsPrompt = `You are an expert in resume optimization for Applicant Tracking Systems (ATS).
+
+Your task is to analyze the following work experience descriptions extracted from a candidate's resume and provide feedback and improvements to make them more impactful and ATS-friendly.
+
+Follow these instructions strictly:
+1. Keep the tone professional and concise.
+2. Use action verbs and include measurable impact or metrics where appropriate.
+3. Suggest relevant technical keywords if missing (but do not invent or assume details).
+4. Ensure alignment with industry best practices for work experience descriptions in resumes.
+5. Only focus on improving the content for better visibility in ATS scans.
+
+Return:
+- The original work experience description.
+- An improved version.
+- A brief explanation of what was changed and why.
+
+Work Experience:
+${workExpText}`;
+      let atsResultText = '';
+      try {
+        const atsResult = await model.generateContent(atsPrompt);
+        const atsResponse = await atsResult.response;
+        atsResultText = atsResponse.text().trim();
+      } catch (err) {
+        return res.status(500).json({ error: 'Failed to analyze work experience for ATS', details: err.message });
+      }
+      // 5. Return the result
+      res.json({
+        message: 'Work Experience ATS analysis complete',
+        workExperience: workExpText,
+        atsAnalysis: atsResultText
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    }
+  }
+);
 
 export default router; 
