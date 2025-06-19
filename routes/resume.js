@@ -508,4 +508,23 @@ router.post('/generate-jd', async (req, res) => {
   }
 });
 
+/**
+ * Route to get role relevance score using Gemini
+ */
+router.post('/role-relevance', async (req, res) => {
+  try {
+    const { currentRole, targetRole } = req.body;
+    if (!currentRole || !targetRole) {
+      return res.status(400).json({ error: 'Current role and target role are required' });
+    }
+    const prompt = `You are an expert career evaluator.\n\nYour task is to compare the candidate's current role with a target role they want to transition into. Assess how relevant the current role is to the target role based on responsibilities, domain, tools, technologies, and focus areas.\n\nFollow these instructions strictly:\n1. Match the current role responsibilities with the target role requirements.\n2. Do not make assumptions about capabilities not explicitly mentioned.\n3. Evaluate only based on the factual overlap in tasks, domains, and skills.\n4. Do not factor in job titles, years of experience, or soft skills.\n\nReturn:\n- A neutral and objective role relevance score out of 100.\n- A list of overlapping responsibilities or focus areas.\n- A list of gaps or mismatches (key responsibilities/tools of the target role not found in the current role).\n- A one-line justification for the score.\n\nCurrent Role: ${currentRole}\nTarget Role: ${targetRole}`;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const report = response.text();
+    res.json({ report });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get role relevance score', details: error.message });
+  }
+});
+
 export default router; 
