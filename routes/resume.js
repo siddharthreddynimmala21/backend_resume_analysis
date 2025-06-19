@@ -417,4 +417,72 @@ router.post('/parse',
   }
 });
 
+/**
+ * Route to match resume skills with job description using Gemini
+ */
+router.post('/match-skills', 
+  timeout,
+  logRequestDetails,
+  upload.single('resume'), 
+  async (req, res) => {
+    try {
+      // 1. Validate file and job description
+      if (!req.file) {
+        return res.status(400).json({ error: 'No resume file uploaded' });
+      }
+      if (!req.body.jobDescription) {
+        return res.status(400).json({ error: 'Job description is required' });
+      }
+      if (req.file.mimetype !== 'application/pdf') {
+        return res.status(400).json({ error: 'Only PDF files are allowed' });
+      }
+      if (!req.file.buffer || req.file.buffer.length === 0) {
+        return res.status(400).json({ error: 'The uploaded PDF file is empty or corrupted' });
+      }
+      // 2. Extract text from PDF
+      let extractedText = '';
+      try {
+        const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
+        extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
+      } catch (parseError) {
+        return res.status(400).json({ error: 'Unable to extract text from the PDF', details: parseError.message });
+      }
+      if (!extractedText) {
+        return res.status(400).json({ error: 'No text could be extracted from the PDF' });
+      }
+      // 3. Use Gemini to extract skills from resume text
+      const skillsPrompt = `Extract a flat, comma-separated list of all skills (technical and soft) mentioned in the following resume text. Only list the skills, no extra text.\n\nResume Text:\n${extractedText}`;
+      let skillsList = [];
+      try {
+        const skillsResult = await model.generateContent(skillsPrompt);
+        const skillsResponse = await skillsResult.response;
+        const skillsText = skillsResponse.text();
+        // Parse comma-separated skills
+        skillsList = skillsText.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+      } catch (err) {
+        return res.status(500).json({ error: 'Failed to extract skills from resume', details: err.message });
+      }
+      // 4. Prepare the prompt for skill matching
+      const jobDescription = req.body.jobDescription;
+      const matchPrompt = `Skills: ${skillsList.join(', ')}\n\nJob Description: ${jobDescription}\n\nFollow these instructions strictly:\n1. Match the candidate's skills with the job requirements.\n2. Do not make assumptions about skills not clearly mentioned.\n3. Evaluate only based on the overlap of skills (not years of experience, education, or formatting).\n4. Return:\n   - A neutral and objective match percentage score out of 100.\n   - A list of matching skills.\n   - A list of missing skills (required but not found in the resume).\n   - A short one-line justification for the score.`;
+      let matchResult;
+      try {
+        const matchAIResult = await model.generateContent(matchPrompt);
+        const matchAIResponse = await matchAIResult.response;
+        matchResult = matchAIResponse.text();
+      } catch (err) {
+        return res.status(500).json({ error: 'Failed to match skills with job description', details: err.message });
+      }
+      // 5. Return the result
+      res.json({
+        message: 'Skill match analysis complete',
+        skills: skillsList,
+        matchReport: matchResult
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    }
+  }
+);
+
 export default router; 
