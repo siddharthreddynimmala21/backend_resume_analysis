@@ -485,4 +485,27 @@ router.post('/match-skills',
   }
 );
 
+/**
+ * Route to generate a job description using Gemini based on experience, role, and company
+ */
+router.post('/generate-jd', async (req, res) => {
+  try {
+    const { experience, role, company } = req.body;
+    if (!experience || !role) {
+      return res.status(400).json({ error: 'Experience and role are required' });
+    }
+    let prompt = `Write a detailed, modern, and realistic job description for a ${role} with ${experience} experience`;
+    if (company && company.trim()) {
+      prompt += ` at ${company}`;
+    }
+    prompt += ". The job description should be suitable for skill matching and should include all relevant technical and soft skills expected for this role and experience level. Do not include company-specific perks or benefits. Return only the job description text.";
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const jd = response.text();
+    res.json({ jobDescription: jd });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to generate job description', details: error.message });
+  }
+});
+
 export default router; 
