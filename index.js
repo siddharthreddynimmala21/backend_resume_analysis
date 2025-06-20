@@ -131,6 +131,11 @@ import authRouter from './routes/auth.js';
 app.use('/api/auth', authRouter);
 app.use('/api/resume', resumeRoutes);
 
+// Top-level ping route for uptime monitoring
+app.get('/ping', (req, res) => {
+  res.json({ message: 'server is available' });
+});
+
 // Error handling
 app.use((err, req, res, next) => {
     console.error(err.stack);

@@ -700,4 +700,9 @@ ${workExpText}`;
   }
 );
 
+// Dummy ping route for uptime monitoring
+router.get('/ping', (req, res) => {
+  res.json({ message: 'server is available' });
+});
+
 export default router; 
