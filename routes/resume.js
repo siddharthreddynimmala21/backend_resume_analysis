@@ -464,7 +464,7 @@ router.post('/match-skills',
       }
       // 4. Prepare the prompt for skill matching
       const jobDescription = req.body.jobDescription;
-      const matchPrompt = `Skills: ${skillsList.join(', ')}\n\nJob Description: ${jobDescription}\n\nFollow these instructions strictly:\n1. Match the candidate's skills with the job requirements.\n2. Do not make assumptions about skills not clearly mentioned.\n3. Evaluate only based on the overlap of skills (not years of experience, education, or formatting).\n4. Return:\n   - A neutral and objective match percentage score out of 100.\n   - A list of matching skills.\n   - A list of missing skills (required but not found in the resume).\n   - A short one-line justification for the score.\n5. Also, provide 2-3 actionable suggestions for the candidate to improve their skill match score for this job, based on the missing skills or gaps.\n\nReturn the result in the following format:\nSkill Match Report:\n<report>\n\nSuggestions to Improve:\n<suggestions>`;
+      const matchPrompt = `Skills: ${skillsList.join(', ')}\n\nJob Description: ${jobDescription}\n\nFollow these instructions strictly:\n1. Match the candidate's skills with the job requirements.\n2. Do not make assumptions about skills not clearly mentioned.\n3. Evaluate only based on the overlap of skills (not years of experience, education, or formatting).\n4. Return the analysis in this exact format:\n\nSkill Match Score: [score out of 100]\n\nStrengths:\n- [matching skill 1]\n- [matching skill 2]\n- [etc.]\n\nAreas for Improvement:\n- [missing skill 1]\n- [missing skill 2]\n- [etc.]\n\nJustification:\n[A brief explanation of the score]\n\n5. Also, provide 2-3 actionable suggestions for the candidate to improve their skill match score for this job, based on the missing skills or gaps.\n\nReturn the result in the following format:\nSkill Match Report:\n<report>\n\nSuggestions to Improve:\n<suggestions>`;
       let matchResult;
       try {
         const matchAIResult = await model.generateContent(matchPrompt);
@@ -526,7 +526,7 @@ router.post('/role-relevance', async (req, res) => {
     if (!currentRole || !targetRole) {
       return res.status(400).json({ error: 'Current role and target role are required' });
     }
-    const prompt = `You are an expert career evaluator.\n\nYour task is to compare the candidate's current role with a target role they want to transition into. Assess how relevant the current role is to the target role based on responsibilities, domain, tools, technologies, and focus areas.\n\nFollow these instructions strictly:\n1. Match the current role responsibilities with the target role requirements.\n2. Do not make assumptions about capabilities not explicitly mentioned.\n3. Evaluate only based on the factual overlap in tasks, domains, and skills.\n4. Do not factor in job titles, years of experience, or soft skills.\n\nReturn:\n- A neutral and objective role relevance score out of 100.\n- A list of overlapping responsibilities or focus areas.\n- A list of gaps or mismatches (key responsibilities/tools of the target role not found in the current role).\n- A one-line justification for the score.\n\nCurrent Role: ${currentRole}\nTarget Role: ${targetRole}`;
+    const prompt = `Current Role: ${currentRole}\n\nTarget Role: ${targetRole}\n\nFollow these instructions strictly:\n1. Compare the current role with the target role based on:\n   - Responsibilities\n   - Domain\n   - Tools and technologies\n   - Focus areas\n2. Return the analysis in this exact format:\n\nSkill Match Score: [score out of 100]\n\nStrengths:\n- [strength 1]\n- [strength 2]\n- [etc.]\n\nAreas for Improvement:\n- [gap 1]\n- [gap 2]\n- [etc.]\n\nJustification:\n[A brief explanation of the score]`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const report = response.text();
@@ -591,10 +591,20 @@ Follow these instructions strictly:
 4. Ensure alignment with industry best practices for project descriptions in resumes.
 5. Only focus on improving the content for better visibility in ATS scans.
 
-Return:
-- The original project description.
-- An improved version.
-- A brief explanation of what was changed and why.
+For each project, provide the analysis in this exact format:
+
+Project: [Project Name]
+
+Original:
+[Original project description]
+
+Improved:
+[Optimized project description]
+
+Changes and Rationale:
+[Brief explanation of the changes made and why they improve ATS compatibility]
+
+Repeat this format for each project.
 
 Projects:
 ${projectsText}`;
@@ -673,10 +683,20 @@ Follow these instructions strictly:
 4. Ensure alignment with industry best practices for work experience descriptions in resumes.
 5. Only focus on improving the content for better visibility in ATS scans.
 
-Return:
-- The original work experience description.
-- An improved version.
-- A brief explanation of what was changed and why.
+For each work experience entry, provide the analysis in this exact format:
+
+Position: [Job Title at Company]
+
+Original:
+[Original work experience description]
+
+Improved:
+[Optimized work experience description]
+
+Changes and Rationale:
+[Brief explanation of the changes made and why they improve ATS compatibility]
+
+Repeat this format for each position.
 
 Work Experience:
 ${workExpText}`;
@@ -705,4 +725,4 @@ router.get('/ping', (req, res) => {
   res.json({ message: 'server is available' });
 });
 
-export default router; 
+export default router;
