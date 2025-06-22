@@ -5,6 +5,7 @@ import { sendOTPEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 
+//just ignore
 // Test endpoint for auth routes
 router.get('/test', (req, res) => {
     console.log('Auth test endpoint hit');
