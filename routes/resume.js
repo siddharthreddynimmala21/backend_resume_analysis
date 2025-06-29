@@ -513,7 +513,24 @@ router.post('/generate-jd', async (req, res) => {
     const jd = response.text();
     res.json({ jobDescription: jd });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to generate job description', details: error.message });
+    console.error('Error generating job description:', error);
+    let errorMessage = 'Failed to generate job description';
+    let errorDetails = error.message;
+
+    if (error.response && error.response.text) {
+      try {
+        const geminiError = JSON.parse(error.response.text());
+        if (geminiError.error && geminiError.error.message) {
+          errorMessage = geminiError.error.message;
+          errorDetails = geminiError.error.details || error.message;
+        }
+      } catch (parseErr) {
+        // If parsing fails, use the raw text
+        errorDetails = error.response.text();
+      }
+    }
+
+    res.status(500).json({ error: errorMessage, details: errorDetails });
   }
 });
 
@@ -532,7 +549,24 @@ router.post('/role-relevance', async (req, res) => {
     const report = response.text();
     res.json({ report });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get role relevance score', details: error.message });
+    console.error('Error getting role relevance score:', error);
+    let errorMessage = 'Failed to get role relevance score';
+    let errorDetails = error.message;
+
+    if (error.response && error.response.text) {
+      try {
+        const geminiError = JSON.parse(error.response.text());
+        if (geminiError.error && geminiError.error.message) {
+          errorMessage = geminiError.error.message;
+          errorDetails = geminiError.error.details || error.message;
+        }
+      } catch (parseErr) {
+        // If parsing fails, use the raw text
+        errorDetails = error.response.text();
+      }
+    }
+
+    res.status(500).json({ error: errorMessage, details: errorDetails });
   }
 });
 

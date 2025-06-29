@@ -101,35 +101,14 @@ app.get('/test', (req, res) => {
     res.json({ message: 'Test endpoint working!' });
 });
 
-// Gemini API endpoint
-app.post('/api/chat', async (req, res) => {
-    try {
-        console.log('Chat endpoint hit with body:', req.body);
-        const { prompt } = req.body;
-        
-        if (!prompt) {
-            return res.status(400).json({ error: 'Prompt is required' });
-        }
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
-        
-        console.log('Generated response:', text);
-        res.json({ response: text });
-    } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ 
-            error: 'Something went wrong',
-            details: error.message 
-        });
-    }
-});
+// Note: Chat routes are handled by the chatRouter mounted at /api/chat
 
 // Routes
 import authRouter from './routes/auth.js';
+import chatRouter from './routes/chat.js';
 app.use('/api/auth', authRouter);
 app.use('/api/resume', resumeRoutes);
+app.use('/api/chat', chatRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {
