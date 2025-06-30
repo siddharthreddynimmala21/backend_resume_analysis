@@ -52,11 +52,11 @@ app.use((req, res, next) => {
 });
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/resume-ai', {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/youtube_project', {
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => {
-    console.log('Connected to MongoDB');
+    console.log('Connected to MongoDB for resume storage');
 }).catch((error) => {
     console.error('MongoDB connection error:', error);
 });
