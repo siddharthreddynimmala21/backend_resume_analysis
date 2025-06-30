@@ -149,7 +149,7 @@ class RAGService {
       
       return { chunksStored: chunks.length };
     } catch (error) {
-      console.error('Error processing resume:', error);
+      console.error('Error in processAndStoreResume:', error);
       throw error;
     }
   }
@@ -246,7 +246,7 @@ Please provide a helpful and accurate answer based on the resume information and
       
       return { success: true, message: `Resume ${resumeId} deleted successfully` };
     } catch (error) {
-      console.error('Error deleting resume:', error);
+      console.error('Error in deleteResume:', error);
       throw error;
     }
   }
