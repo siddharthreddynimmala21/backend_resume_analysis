@@ -5,12 +5,30 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 
 dotenv.config();
 
+// MongoDB Schema for Resume Data
+const resumeSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  resumeId: { type: String, required: true, unique: true },
+  fileName: { type: String, required: true },
+  resumeText: { type: String, required: true },
+  chunksCount: { type: Number, required: true },
+  textLength: { type: Number, required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Compound index for efficient queries
+resumeSchema.index({ userId: 1, resumeId: 1 });
+
+const Resume = mongoose.model('Resume', resumeSchema);
+
 class RAGService {
   constructor() {
-    // Use in-memory storage instead of ChromaDB for simplicity
+    // Use in-memory storage for vector embeddings (for performance)
     this.collections = new Map();
     this.embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GEMINI_API_KEY,
@@ -23,28 +41,47 @@ class RAGService {
       chunkOverlap: 200,
     });
     
-    // Ensure storage directory exists
+    // Ensure storage directory exists for vector embeddings
     this.storageDir = './vector_storage';
     if (!fs.existsSync(this.storageDir)) {
       fs.mkdirSync(this.storageDir, { recursive: true });
     }
+
+    // Initialize MongoDB connection
+    this.initMongoDB();
   }
 
-  async initializeCollection(userId) {
+  async initMongoDB() {
     try {
-      const collectionName = `resume_${userId}`;
+      if (!mongoose.connection.readyState) {
+        await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/youtube_project');
+        console.log('Connected to MongoDB for resume storage');
+      }
+    } catch (error) {
+      console.error('MongoDB connection error:', error);
+    }
+  }
+
+  // Build collection name for vector embeddings
+  collectionName(userId, resumeId) {
+    return `resume_${userId}_${resumeId}`;
+  }
+
+  async initializeCollection(userId, resumeId) {
+    try {
+      const name = this.collectionName(userId, resumeId);
       
       // Check if collection exists in memory
-      if (!this.collections.has(collectionName)) {
-        // Try to load from file storage
-        const filePath = path.join(this.storageDir, `${collectionName}.json`);
+      if (!this.collections.has(name)) {
+        // Try to load from file storage (vector embeddings only)
+        const filePath = path.join(this.storageDir, `${name}.json`);
         if (fs.existsSync(filePath)) {
           const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-          this.collections.set(collectionName, data);
+          this.collections.set(name, data);
         } else {
           // Create new collection
-          this.collections.set(collectionName, {
-            name: collectionName,
+          this.collections.set(name, {
+            name,
             documents: [],
             embeddings: [],
             metadata: [],
@@ -53,16 +90,18 @@ class RAGService {
         }
       }
       
-      return this.collections.get(collectionName);
+      return this.collections.get(name);
     } catch (error) {
       console.error('Error initializing collection:', error);
       throw error;
     }
   }
 
-  async processAndStoreResume(userId, resumeText) {
+  async processAndStoreResume(userId, resumeId, resumeText, fileName) {
     try {
-      const collection = await this.initializeCollection(userId);
+      await this.initMongoDB();
+      
+      const collection = await this.initializeCollection(userId, resumeId);
       
       // Split text into chunks
       const chunks = await this.textSplitter.createDocuments([resumeText]);
@@ -89,9 +128,24 @@ class RAGService {
         });
       }
       
-      // Save to file
-      const filePath = path.join(this.storageDir, `resume_${userId}.json`);
+      // Save vector embeddings to file
+      const filePath = path.join(this.storageDir, `${this.collectionName(userId, resumeId)}.json`);
       fs.writeFileSync(filePath, JSON.stringify(collection, null, 2));
+      
+      // Store resume text data in MongoDB
+      await Resume.findOneAndUpdate(
+        { userId, resumeId },
+        {
+          userId,
+          resumeId,
+          fileName,
+          resumeText,
+          chunksCount: chunks.length,
+          textLength: resumeText.length,
+          updatedAt: new Date()
+        },
+        { upsert: true, new: true }
+      );
       
       return { chunksStored: chunks.length };
     } catch (error) {
@@ -100,14 +154,16 @@ class RAGService {
     }
   }
 
-  async queryResume(userId, question, conversationHistory = []) {
+  async queryResume(userId, resumeId, question, conversationHistory = []) {
     try {
-      const collection = await this.initializeCollection(userId);
+      await this.initMongoDB();
+      
+      const collection = await this.initializeCollection(userId, resumeId);
       
       if (collection.documents.length === 0) {
         return {
           success: false,
-          message: "Please upload your resume first"
+          message: "Please upload that resume first"
         };
       }
       
@@ -169,36 +225,124 @@ Please provide a helpful and accurate answer based on the resume information and
     return dotProduct / (magnitudeA * magnitudeB);
   }
 
-  async deleteUserData(userId) {
+  // Delete a specific resume
+  async deleteResume(userId, resumeId) {
     try {
-      const collectionName = `resume_${userId}`;
+      await this.initMongoDB();
+      
+      const collectionName = this.collectionName(userId, resumeId);
       const filePath = path.join(this.storageDir, `${collectionName}.json`);
       
       // Remove from memory
       this.collections.delete(collectionName);
       
-      // Remove file if exists
+      // Remove vector embeddings file if exists
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
       
-      return { success: true, message: 'User data deleted successfully' };
+      // Remove from MongoDB
+      await Resume.deleteOne({ userId, resumeId });
+      
+      return { success: true, message: `Resume ${resumeId} deleted successfully` };
+    } catch (error) {
+      console.error('Error deleting resume:', error);
+      throw error;
+    }
+  }
+
+  // Delete all user data
+  async deleteUserData(userId) {
+    try {
+      await this.initMongoDB();
+      
+      // Get all user resumes from MongoDB
+      const userResumes = await Resume.find({ userId });
+      
+      // Delete each resume's vector embeddings
+      for (const resume of userResumes) {
+        const collectionName = this.collectionName(userId, resume.resumeId);
+        const filePath = path.join(this.storageDir, `${collectionName}.json`);
+        
+        // Remove from memory
+        this.collections.delete(collectionName);
+        
+        // Remove file if exists
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+      
+      // Remove all user resumes from MongoDB
+      await Resume.deleteMany({ userId });
+      
+      return { success: true, message: 'All user data deleted successfully' };
     } catch (error) {
       console.error('Error deleting user data:', error);
       throw error;
     }
   }
 
+  // Get all user resumes
+  async getUserResumes(userId) {
+    try {
+      await this.initMongoDB();
+      
+      const resumes = await Resume.find({ userId })
+        .select('resumeId fileName chunksCount textLength createdAt')
+        .sort({ createdAt: -1 });
+      
+      return resumes.map(resume => ({
+        id: resume.resumeId,
+        fileName: resume.fileName,
+        chunksCount: resume.chunksCount,
+        textLength: resume.textLength,
+        createdAt: resume.createdAt
+      }));
+    } catch (error) {
+      console.error('Error getting user resumes:', error);
+      return [];
+    }
+  }
+
+  // Check if user has any resumes
   async hasUserResume(userId) {
     try {
-      const collection = await this.initializeCollection(userId);
+      await this.initMongoDB();
+      
+      const count = await Resume.countDocuments({ userId });
       return { 
-        hasResume: collection.documents.length > 0, 
-        chunksCount: collection.documents.length 
+        hasResume: count > 0, 
+        resumeCount: count 
       };
     } catch (error) {
       console.error('Error checking user resume:', error);
-      return { hasResume: false, chunksCount: 0 };
+      return { hasResume: false, resumeCount: 0 };
+    }
+  }
+
+  // Get specific resume info
+  async getResumeInfo(userId, resumeId) {
+    try {
+      await this.initMongoDB();
+      
+      const resume = await Resume.findOne({ userId, resumeId })
+        .select('resumeId fileName chunksCount textLength createdAt');
+      
+      if (!resume) {
+        return null;
+      }
+      
+      return {
+        id: resume.resumeId,
+        fileName: resume.fileName,
+        chunksCount: resume.chunksCount,
+        textLength: resume.textLength,
+        createdAt: resume.createdAt
+      };
+    } catch (error) {
+      console.error('Error getting resume info:', error);
+      return null;
     }
   }
 }

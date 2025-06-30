@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 import multer from 'multer';
 import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
 
@@ -38,7 +39,26 @@ const upload = multer({
   }
 });
 
-// Upload and process resume for RAG
+// Get all user resumes
+router.get('/resumes', auth, async (req, res) => {
+  try {
+    const ragService = new RAGService();
+    const resumes = await ragService.getUserResumes(req.user.id);
+    
+    res.json({
+      success: true,
+      resumes
+    });
+  } catch (error) {
+    console.error('Error getting resumes:', error);
+    res.status(500).json({ 
+      error: 'Failed to get resumes',
+      details: error.message 
+    });
+  }
+});
+
+// Upload and process resume for RAG (max 3 resumes)
 router.post('/upload-resume', auth, upload.single('resume'), async (req, res) => {
   try {
     if (!req.file) {
@@ -47,29 +67,52 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
 
     console.log('Processing uploaded resume:', req.file.filename);
     
+    // Check if user already has 3 resumes
+    const ragService = new RAGService();
+    const existingResumes = await ragService.getUserResumes(req.user.id);
+    
+    if (existingResumes.length >= 3) {
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ 
+        error: 'Maximum 3 resumes allowed. Please delete an existing resume first.' 
+      });
+    }
+    
     // Extract text from PDF
     const pdfBuffer = fs.readFileSync(req.file.path);
     const pdfData = await pdfParse(pdfBuffer);
     const resumeText = pdfData.text;
 
     if (!resumeText || resumeText.trim().length === 0) {
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: 'Could not extract text from PDF' });
     }
 
     console.log('Extracted text length:', resumeText.length);
 
-    // Process and store in vector database
-    const ragService = new RAGService();
-    const result = await ragService.processAndStoreResume(req.user.id, resumeText);
+    // Generate unique resume ID
+    const resumeId = uuidv4();
+
+    // Process and store in vector database and MongoDB
+    const result = await ragService.processAndStoreResume(
+      req.user.id, 
+      resumeId, 
+      resumeText, 
+      req.file.originalname
+    );
 
     // Clean up uploaded file
     fs.unlinkSync(req.file.path);
 
+    // Get the created resume info
+    const resumeInfo = await ragService.getResumeInfo(req.user.id, resumeId);
+
     res.json({
       success: true,
       message: 'Resume uploaded and processed successfully',
-      chunksStored: result.chunksStored,
-      textLength: resumeText.length
+      resume: resumeInfo
     });
 
   } catch (error) {
@@ -87,23 +130,60 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
   }
 });
 
-// RAG-based chat endpoint
+// Delete a specific resume
+router.delete('/resumes/:resumeId', auth, async (req, res) => {
+  try {
+    const { resumeId } = req.params;
+    
+    if (!resumeId) {
+      return res.status(400).json({ error: 'Resume ID is required' });
+    }
+
+    const ragService = new RAGService();
+    
+    // Check if resume exists and belongs to user
+    const resumeInfo = await ragService.getResumeInfo(req.user.id, resumeId);
+    if (!resumeInfo) {
+      return res.status(404).json({ error: 'Resume not found' });
+    }
+
+    // Delete the resume
+    const result = await ragService.deleteResume(req.user.id, resumeId);
+    
+    res.json({
+      success: true,
+      message: `Resume "${resumeInfo.fileName}" deleted successfully`
+    });
+  } catch (error) {
+    console.error('Error deleting resume:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete resume',
+      details: error.message 
+    });
+  }
+});
+
+// RAG-based chat endpoint (now requires resumeId)
 router.post('/query', auth, async (req, res) => {
   try {
-    const { question, conversationHistory = [] } = req.body;
+    const { question, conversationHistory = [], resumeId } = req.body;
 
     if (!question || question.trim().length === 0) {
       return res.status(400).json({ error: 'Question is required' });
     }
 
-    console.log(`User ${req.user.id} asking: ${question}`);
+    if (!resumeId) {
+      return res.status(400).json({ error: 'Resume ID is required' });
+    }
+
+    console.log(`User ${req.user.id} asking: ${question} (Resume: ${resumeId})`);
     if (conversationHistory.length > 0) {
       console.log(`With conversation context: ${conversationHistory.length} messages`);
     }
 
-    // Query the resume using RAG
+    // Query the specific resume using RAG
     const ragService = new RAGService();
-    const result = await ragService.queryResume(req.user.id, question, conversationHistory);
+    const result = await ragService.queryResume(req.user.id, resumeId, question, conversationHistory);
 
     if (!result.success) {
       return res.status(404).json({ 
@@ -142,7 +222,7 @@ router.delete('/resume-data', auth, async (req, res) => {
   }
 });
 
-// Check if user has resume data
+// Check if user has resume data (legacy endpoint - now returns resume count)
 router.get('/has-resume', auth, async (req, res) => {
   try {
     const ragService = new RAGService();
@@ -150,13 +230,13 @@ router.get('/has-resume', auth, async (req, res) => {
     
     res.json({
       hasResume: result.hasResume,
-      chunksCount: result.chunksCount
+      resumeCount: result.resumeCount
     });
   } catch (error) {
     console.error('Error checking resume data:', error);
     res.json({
       hasResume: false,
-      chunksCount: 0
+      resumeCount: 0
     });
   }
 });
