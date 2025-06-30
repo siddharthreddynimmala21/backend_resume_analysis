@@ -21,10 +21,30 @@ const resumeSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-// Compound index for efficient queries
+// MongoDB Schema for Chat History
+const chatHistorySchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  chatId: { type: String, required: true },
+  resumeId: { type: String, required: true },
+  chatName: { type: String, required: true },
+  messages: [{
+    text: { type: String, required: true },
+    isBot: { type: Boolean, required: true },
+    timestamp: { type: Date, default: Date.now }
+  }],
+  messageCount: { type: Number, default: 0 },
+  lastActivity: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+// Compound indexes for efficient queries
 resumeSchema.index({ userId: 1, resumeId: 1 });
+chatHistorySchema.index({ userId: 1, chatId: 1 });
+chatHistorySchema.index({ userId: 1, resumeId: 1 });
 
 const Resume = mongoose.model('Resume', resumeSchema);
+const ChatHistory = mongoose.model('ChatHistory', chatHistorySchema);
 
 class RAGService {
   constructor() {
@@ -328,6 +348,120 @@ Please provide a helpful and accurate answer based on the resume information and
       
       const resume = await Resume.findOne({ userId, resumeId })
         .select('resumeId fileName chunksCount textLength createdAt');
+      
+      if (!resume) {
+        return null;
+      }
+      
+      return {
+        id: resume.resumeId,
+        fileName: resume.fileName,
+        chunksCount: resume.chunksCount,
+        textLength: resume.textLength,
+        createdAt: resume.createdAt
+      };
+    } catch (error) {
+      console.error('Error getting resume info:', error);
+      return null;
+    }
+  }
+
+  // Chat History Management Methods
+  async saveChatHistory(userId, chatId, resumeId, chatName, messages) {
+    try {
+      await this.initMongoDB();
+      
+      const chatData = {
+        userId,
+        chatId,
+        resumeId,
+        chatName,
+        messages: messages.map(msg => ({
+          text: msg.text,
+          isBot: msg.isBot,
+          timestamp: msg.timestamp || new Date()
+        })),
+        messageCount: messages.length,
+        lastActivity: new Date(),
+        updatedAt: new Date()
+      };
+
+      await ChatHistory.findOneAndUpdate(
+        { userId, chatId },
+        chatData,
+        { upsert: true, new: true }
+      );
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving chat history:', error);
+      throw error;
+    }
+  }
+
+  async getChatHistory(userId, chatId) {
+    try {
+      await this.initMongoDB();
+      
+      const chat = await ChatHistory.findOne({ userId, chatId });
+      return chat ? chat.messages : [];
+    } catch (error) {
+      console.error('Error getting chat history:', error);
+      throw error;
+    }
+  }
+
+  async getUserChatSessions(userId) {
+    try {
+      await this.initMongoDB();
+      
+      const chats = await ChatHistory.find({ userId })
+        .select('chatId resumeId chatName messageCount lastActivity createdAt')
+        .sort({ lastActivity: -1 });
+      
+      return chats.map(chat => ({
+        id: chat.chatId,
+        resumeId: chat.resumeId,
+        name: chat.chatName,
+        messageCount: chat.messageCount,
+        lastActivity: chat.lastActivity,
+        createdAt: chat.createdAt
+      }));
+    } catch (error) {
+      console.error('Error getting user chat sessions:', error);
+      throw error;
+    }
+  }
+
+  async deleteChatHistory(userId, chatId) {
+    try {
+      await this.initMongoDB();
+      
+      await ChatHistory.deleteOne({ userId, chatId });
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting chat history:', error);
+      throw error;
+    }
+  }
+
+  async deleteUserChatsByResume(userId, resumeId) {
+    try {
+      await this.initMongoDB();
+      
+      await ChatHistory.deleteMany({ userId, resumeId });
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting user chats by resume:', error);
+      throw error;
+    }
+  }
+
+  async getResumeInfo(userId, resumeId) {
+    try {
+      await this.initMongoDB();
+      
+      const resume = await Resume.findOne({ userId, resumeId });
       
       if (!resume) {
         return null;
