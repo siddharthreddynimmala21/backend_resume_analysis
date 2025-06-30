@@ -241,4 +241,88 @@ router.get('/has-resume', auth, async (req, res) => {
   }
 });
 
+// Chat History Management Routes
+
+// Save chat history
+router.post('/history', auth, async (req, res) => {
+  try {
+    const { chatId, resumeId, chatName, messages } = req.body;
+    
+    if (!chatId || !resumeId || !chatName || !messages) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: chatId, resumeId, chatName, messages' 
+      });
+    }
+
+    const ragService = new RAGService();
+    const result = await ragService.saveChatHistory(
+      req.user.id, 
+      chatId, 
+      resumeId, 
+      chatName, 
+      messages
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error saving chat history:', error);
+    res.status(500).json({ 
+      error: 'Failed to save chat history',
+      details: error.message 
+    });
+  }
+});
+
+// Get chat history
+router.get('/history/:chatId', auth, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    
+    const ragService = new RAGService();
+    const messages = await ragService.getChatHistory(req.user.id, chatId);
+    
+    res.json({ messages });
+  } catch (error) {
+    console.error('Error getting chat history:', error);
+    res.status(500).json({ 
+      error: 'Failed to get chat history',
+      details: error.message 
+    });
+  }
+});
+
+// Get user's chat sessions
+router.get('/sessions', auth, async (req, res) => {
+  try {
+    const ragService = new RAGService();
+    const sessions = await ragService.getUserChatSessions(req.user.id);
+    
+    res.json({ sessions });
+  } catch (error) {
+    console.error('Error getting chat sessions:', error);
+    res.status(500).json({ 
+      error: 'Failed to get chat sessions',
+      details: error.message 
+    });
+  }
+});
+
+// Delete chat history
+router.delete('/history/:chatId', auth, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    
+    const ragService = new RAGService();
+    const result = await ragService.deleteChatHistory(req.user.id, chatId);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Error deleting chat history:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete chat history',
+      details: error.message 
+    });
+  }
+});
+
 export default router;
