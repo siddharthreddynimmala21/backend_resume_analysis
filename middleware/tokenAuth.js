@@ -132,7 +132,7 @@ export const setRefreshTokenCookie = (res, refreshToken, expiresAt) => {
     secure: process.env.NODE_ENV === 'production', // Use secure in production
     signed: true,
     maxAge,
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Use 'none' in production for cross-site requests
     path: '/api/auth/refresh-token' // Restrict cookie to refresh token endpoint
   });
 };
@@ -143,6 +143,7 @@ export const clearRefreshTokenCookie = (res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     signed: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Use 'none' in production for cross-site requests
     path: '/api/auth/refresh-token'
   });
 };
