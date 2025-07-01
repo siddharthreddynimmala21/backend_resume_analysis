@@ -1,11 +1,11 @@
-import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { v4 as uuidv4 } from 'uuid';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Groq } from 'groq-sdk';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import GeminiEmbeddings from '../GeminiEmbeddings.js';
 
 dotenv.config();
 
@@ -50,12 +50,31 @@ class RAGService {
   constructor() {
     // Use in-memory storage for vector embeddings (for performance)
     this.collections = new Map();
-    this.embeddings = new GoogleGenerativeAIEmbeddings({
-      apiKey: process.env.GEMINI_API_KEY,
+    
+    // Get API keys from environment
+    const groqApiKey = process.env.GROQ_API_KEY;
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    
+    if (!geminiApiKey) {
+      console.error("Error: GEMINI_API_KEY environment variable is not set");
+      process.exit(1);
+    }
+    
+    if (!groqApiKey) {
+      console.error("Error: GROQ_API_KEY environment variable is not set");
+      process.exit(1);
+    }
+    
+    // Initialize Gemini embeddings for production-ready vector embeddings
+    this.embeddings = new GeminiEmbeddings({
+      apiKey: geminiApiKey,
       modelName: 'embedding-001',
     });
-    this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    // Initialize Groq client for text generation
+    this.groq = new Groq({
+      apiKey: groqApiKey,
+    });
     this.textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
       chunkOverlap: 200,
@@ -224,7 +243,7 @@ class RAGService {
           conversationHistory.map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
       }
       
-      // Generate answer using Gemini with conversation context
+      // Generate answer using Groq with conversation context
       const prompt = `Based on the following resume information and conversation history, please answer the question: "${question}"
 
 Resume Information:
@@ -232,8 +251,25 @@ ${context}${conversationContext}
 
 Please provide a helpful and accurate answer based on the resume information and conversation context. If this is a follow-up question, consider the previous conversation to provide a more contextual response.`;
       
-      const result = await this.model.generateContent(prompt);
-      const answer = result.response.text();
+      const chatCompletion = await this.groq.chat.completions.create({
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a helpful AI assistant that provides accurate information based on resume data.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        model: 'llama3-8b-8192',
+        temperature: 0.7,
+        max_tokens: 1024,
+        top_p: 1,
+        stream: false,
+      });
+      
+      const answer = chatCompletion.choices[0]?.message?.content || "";
       
       return {
         success: true,

@@ -5,18 +5,22 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+// Import necessary modules
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import resumeRoutes from './routes/resume.js';
 
 // Validate critical environment variables
-const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD'];
+const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD', 'GEMINI_API_KEY', 'GROQ_API_KEY'];
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingVars.length > 0) {
   console.error('⚠️ Missing required environment variables:', missingVars.join(', '));
   console.error('Please check your .env file');
+  process.exit(1); // Exit if critical API keys are missing
 }
+
+// Log API configuration
+console.log('Using Gemini API for embeddings and Groq API for text generation');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -61,34 +65,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/youtube_p
     console.error('MongoDB connection error:', error);
 });
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({
-    generationConfig: {
-        temperature: 1,
-        topP: 0.95,
-        topK: 64,
-    },
-    model: "gemini-1.5-flash",
-    safetySettings: [
-        {
-            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        },
-        {
-            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-            threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        },
-    ],
-});
+// AI model initialization is now handled in the respective service files
 
 // Test routes
 app.get('/', (req, res) => {
