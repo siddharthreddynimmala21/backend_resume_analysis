@@ -42,13 +42,18 @@ const upload = multer({
 // Get all user resumes
 router.get('/resumes', auth, async (req, res) => {
   try {
+    console.log('Chat route: Getting resumes for user:', req.user.id);
     const ragService = new RAGService();
     const resumes = await ragService.getUserResumes(req.user.id);
+    console.log('Chat route: Found resumes:', resumes);
     
-    res.json({
+    const response = {
       success: true,
       resumes
-    });
+    };
+    console.log('Chat route: Sending resumes response:', response);
+    
+    res.json(response);
   } catch (error) {
     console.error('Error getting resumes:', error);
     res.status(500).json({ 
@@ -96,6 +101,7 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
     const resumeId = uuidv4();
 
     // Process and store in vector database and MongoDB
+    console.log('Chat route: Storing resume with RAG service...');
     const result = await ragService.processAndStoreResume(
       req.user.id, 
       resumeId, 
@@ -108,12 +114,16 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
 
     // Get the created resume info
     const resumeInfo = await ragService.getResumeInfo(req.user.id, resumeId);
+    console.log('Chat route: Resume stored successfully:', resumeInfo);
 
-    res.json({
+    const response = {
       success: true,
       message: 'Resume uploaded and processed successfully',
       resume: resumeInfo
-    });
+    };
+    console.log('Chat route: Sending response:', response);
+    
+    res.json(response);
 
   } catch (error) {
     console.error('Error uploading resume:', error);

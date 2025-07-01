@@ -355,19 +355,25 @@ Please provide a helpful and accurate answer based on the resume information and
   // Get all user resumes
   async getUserResumes(userId) {
     try {
+      console.log('RAG Service: Getting resumes for user:', userId);
       await this.initMongoDB();
       
       const resumes = await Resume.find({ userId })
         .select('resumeId fileName chunksCount textLength createdAt')
         .sort({ createdAt: -1 });
       
-      return resumes.map(resume => ({
+      console.log('RAG Service: Found raw resumes:', resumes);
+      
+      const mappedResumes = resumes.map(resume => ({
         id: resume.resumeId,
         fileName: resume.fileName,
         chunksCount: resume.chunksCount,
         textLength: resume.textLength,
         createdAt: resume.createdAt
       }));
+      
+      console.log('RAG Service: Mapped resumes:', mappedResumes);
+      return mappedResumes;
     } catch (error) {
       console.error('Error getting user resumes:', error);
       return [];
@@ -506,28 +512,6 @@ Please provide a helpful and accurate answer based on the resume information and
     }
   }
 
-  async getResumeInfo(userId, resumeId) {
-    try {
-      await this.initMongoDB();
-      
-      const resume = await Resume.findOne({ userId, resumeId });
-      
-      if (!resume) {
-        return null;
-      }
-      
-      return {
-        id: resume.resumeId,
-        fileName: resume.fileName,
-        chunksCount: resume.chunksCount,
-        textLength: resume.textLength,
-        createdAt: resume.createdAt
-      };
-    } catch (error) {
-      console.error('Error getting resume info:', error);
-      return null;
-    }
-  }
 }
 
 export default RAGService;
