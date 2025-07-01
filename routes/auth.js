@@ -2,14 +2,6 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { sendOTPEmail } from '../utils/emailService.js';
-import { 
-  generateAccessToken, 
-  generateRefreshToken, 
-  verifyAccessToken, 
-  handleRefreshToken,
-  setRefreshTokenCookie,
-  clearRefreshTokenCookie
-} from '../middleware/tokenAuth.js';
 
 const router = express.Router();
 
@@ -23,58 +15,6 @@ router.get('/test', (req, res) => {
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development'
     });
-});
-
-// Refresh token endpoint
-router.post('/refresh-token', handleRefreshToken);
-
-// Logout endpoint
-router.post('/logout', async (req, res) => {
-    try {
-        const refreshToken = req.signedCookies.refreshToken;
-        
-        // Clear the refresh token cookie regardless of whether token exists
-        clearRefreshTokenCookie(res);
-        
-        // If there was a refresh token, remove it from the database
-        if (refreshToken) {
-            try {
-                const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
-                const user = await User.findById(decoded.userId);
-                
-                if (user) {
-                    // Remove this specific refresh token
-                    user.removeRefreshToken(refreshToken);
-                    await user.save();
-                }
-            } catch (error) {
-                // Token verification failed, but we still want to proceed with logout
-                console.log('Error during token verification in logout:', error.message);
-            }
-        }
-        
-        res.status(200).json({ message: 'Logged out successfully' });
-    } catch (error) {
-        console.error('Logout error:', error);
-        res.status(500).json({ message: 'Server error during logout' });
-    }
-});
-
-// Logout from all devices
-router.post('/logout-all', verifyAccessToken, async (req, res) => {
-    try {
-        // Remove all refresh tokens for this user
-        req.user.removeAllRefreshTokens();
-        await req.user.save();
-        
-        // Clear the current refresh token cookie
-        clearRefreshTokenCookie(res);
-        
-        res.status(200).json({ message: 'Logged out from all devices successfully' });
-    } catch (error) {
-        console.error('Logout all error:', error);
-        res.status(500).json({ message: 'Server error during logout from all devices' });
-    }
 });
 
 // Register new user
@@ -186,7 +126,7 @@ router.post('/setup-password', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
     try {
-        const { email, password, rememberMe = false } = req.body;
+        const { email, password } = req.body;
         console.log('Login attempt for:', email);
 
         const user = await User.findOne({ email });
@@ -199,19 +139,9 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // Generate access token (short-lived)
-        const accessToken = generateAccessToken(user._id);
-        
-        // Generate refresh token (long-lived) if rememberMe is true
-        if (rememberMe) {
-            const { refreshToken, expiresAt } = await generateRefreshToken(user);
-            
-            // Set refresh token as HttpOnly cookie
-            setRefreshTokenCookie(res, refreshToken, expiresAt);
-        }
-
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
         res.status(200).json({ 
-            token: accessToken,
+            token,
             user: {
                 email: user.email,
                 isVerified: user.isVerified,
