@@ -26,10 +26,18 @@ const app = express();
 
 // Middleware - CORS configuration with credentials support
 app.use(cors({
-    origin: true, // Allow all origins for now
+    origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl requests)
+        if(!origin) return callback(null, true);
+        
+        // Allow all origins in development, or specific origins in production
+        // In production, you should replace this with your actual frontend domain
+        return callback(null, true);
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    credentials: true // Enable credentials for cookies
+    credentials: true, // Enable credentials for cookies
+    optionsSuccessStatus: 200 // For legacy browser support
 }));
 
 app.use(express.json());
