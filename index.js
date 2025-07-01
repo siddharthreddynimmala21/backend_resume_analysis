@@ -128,7 +128,7 @@ app.use((req, res) => {
 });
 
 // Start server
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001; // Default to 3001 to match frontend expectation
 const server = app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
     // console.log('\nAvailable endpoints:');

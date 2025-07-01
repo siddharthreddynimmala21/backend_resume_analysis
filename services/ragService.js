@@ -62,10 +62,12 @@ class RAGService {
     });
     
     // Ensure storage directory exists for vector embeddings
-    this.storageDir = './vector_storage';
+    // Use absolute path to ensure persistence across code updates
+    this.storageDir = path.join(process.cwd(), 'vector_storage');
     if (!fs.existsSync(this.storageDir)) {
       fs.mkdirSync(this.storageDir, { recursive: true });
     }
+    console.log('Vector storage directory:', this.storageDir);
 
     // Initialize MongoDB connection
     this.initMongoDB();
@@ -74,11 +76,22 @@ class RAGService {
   async initMongoDB() {
     try {
       if (!mongoose.connection.readyState) {
-        await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/youtube_project');
-        console.log('Connected to MongoDB for resume storage');
+        const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/youtube_project';
+        console.log('Connecting to MongoDB at:', mongoUri.replace(/\/\/.+@/, '//***@')); // Hide credentials in logs
+        
+        await mongoose.connect(mongoUri, {
+          serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds
+          retryWrites: true,
+          retryReads: true
+        });
+        
+        console.log('Successfully connected to MongoDB for resume storage');
       }
     } catch (error) {
       console.error('MongoDB connection error:', error);
+      console.error('Please check your MongoDB connection string in .env file');
+      // Don't throw here to allow the application to continue without MongoDB
+      // This will result in a degraded experience but won't crash the app
     }
   }
 
