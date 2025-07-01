@@ -38,6 +38,20 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  refreshTokens: [{
+    token: {
+      type: String,
+      required: true
+    },
+    expiresAt: {
+      type: Date,
+      required: true
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
 });
 
 // Hash password before saving
@@ -83,6 +97,37 @@ userSchema.methods.canLogin = function () {
 // Clear OTP after verification
 userSchema.methods.clearOTP = function () {
   this.otp = undefined;
+};
+
+// Add a refresh token to the user
+userSchema.methods.addRefreshToken = function (token, expiresIn) {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + expiresIn); // expiresIn is in days
+  
+  this.refreshTokens.push({
+    token,
+    expiresAt
+  });
+  
+  // Clean up expired tokens while we're at it
+  this.refreshTokens = this.refreshTokens.filter(t => t.expiresAt > new Date());
+  
+  return expiresAt;
+};
+
+// Remove a specific refresh token
+userSchema.methods.removeRefreshToken = function (token) {
+  this.refreshTokens = this.refreshTokens.filter(t => t.token !== token);
+};
+
+// Check if a refresh token exists and is valid
+userSchema.methods.findRefreshToken = function (token) {
+  return this.refreshTokens.find(t => t.token === token && t.expiresAt > new Date());
+};
+
+// Remove all refresh tokens (logout from all devices)
+userSchema.methods.removeAllRefreshTokens = function () {
+  this.refreshTokens = [];
 };
 
 const User = mongoose.model('User', userSchema);
