@@ -5,6 +5,7 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import cookieParser from 'cookie-parser';
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -23,15 +24,16 @@ const __dirname = dirname(__filename);
 
 const app = express();
 
-// Middleware - Simplified CORS configuration
+// Middleware - CORS configuration with credentials support
 app.use(cors({
     origin: true, // Allow all origins for now
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    credentials: false // Set to false to avoid CORS issues
+    credentials: true // Enable credentials for cookies
 }));
 
 app.use(express.json());
+app.use(cookieParser(process.env.JWT_SECRET)); // Use signed cookies with JWT_SECRET
 
 // Enhanced logging middleware for debugging
 app.use((req, res, next) => {
