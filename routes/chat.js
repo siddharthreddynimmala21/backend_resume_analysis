@@ -126,49 +126,116 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
     res.json(response);
 
   } catch (error) {
-    console.error('Error uploading resume:', error);
+    console.error('Error uploading resume:', {
+      userId: req.user.id,
+      fileName: req.file?.originalname,
+      error: error.message,
+      stack: error.stack
+    });
     
     // Clean up file if it exists
     if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+      try {
+        fs.unlinkSync(req.file.path);
+        console.log('Cleaned up uploaded file after error');
+      } catch (cleanupError) {
+        console.error('Error cleaning up file:', cleanupError.message);
+      }
     }
 
-    res.status(500).json({ 
-      error: 'Failed to process resume',
-      details: error.message 
+    // Determine appropriate error response
+    let statusCode = 500;
+    let errorMessage = 'Failed to process resume';
+    
+    if (error.message.includes('Maximum resumes')) {
+      statusCode = 400;
+      errorMessage = error.message;
+    } else if (error.message.includes('Invalid PDF')) {
+      statusCode = 400;
+      errorMessage = 'Invalid PDF file. Please upload a valid PDF document.';
+    } else if (error.message.includes('File too large')) {
+      statusCode = 400;
+      errorMessage = 'File size exceeds the 10MB limit.';
+    }
+
+    res.status(statusCode).json({ 
+      success: false,
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// Delete a specific resume
+// Delete a specific resume with enhanced error handling
 router.delete('/resumes/:resumeId', auth, async (req, res) => {
   try {
     const { resumeId } = req.params;
     
     if (!resumeId) {
-      return res.status(400).json({ error: 'Resume ID is required' });
+      console.error('Delete attempt without resume ID');
+      return res.status(400).json({ 
+        success: false,
+        error: 'Resume ID is required' 
+      });
     }
 
+    console.log(`Starting resume deletion for user ${req.user.id}, resume ${resumeId}`);
     const ragService = new RAGService();
     
     // Check if resume exists and belongs to user
     const resumeInfo = await ragService.getResumeInfo(req.user.id, resumeId);
     if (!resumeInfo) {
-      return res.status(404).json({ error: 'Resume not found' });
+      console.error(`Resume ${resumeId} not found for user ${req.user.id}`);
+      return res.status(404).json({ 
+        success: false,
+        error: 'Resume not found or access denied' 
+      });
     }
 
-    // Delete the resume
-    const result = await ragService.deleteResume(req.user.id, resumeId);
+    // Delete the resume with retry logic
+    let deleteResult;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        deleteResult = await ragService.deleteResume(req.user.id, resumeId);
+        break; // Success, exit retry loop
+      } catch (deleteError) {
+        retryCount++;
+        console.error(`Delete attempt ${retryCount} failed:`, deleteError.message);
+        
+        if (retryCount >= maxRetries) {
+          throw deleteError; // Re-throw after max retries
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
+    }
+    
+    console.log(`Resume ${resumeId} deleted successfully for user ${req.user.id}`);
     
     res.json({
       success: true,
-      message: `Resume "${resumeInfo.fileName}" deleted successfully`
+      message: `Resume "${resumeInfo.fileName}" deleted successfully`,
+      deletedResume: {
+        id: resumeId,
+        fileName: resumeInfo.fileName
+      }
     });
   } catch (error) {
-    console.error('Error deleting resume:', error);
+    console.error('Error deleting resume:', {
+      userId: req.user.id,
+      resumeId: req.params.resumeId,
+      error: error.message,
+      stack: error.stack
+    });
+    
     res.status(500).json({ 
+      success: false,
       error: 'Failed to delete resume',
-      details: error.message 
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });
