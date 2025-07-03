@@ -249,8 +249,22 @@ router.post('/query', auth, async (req, res) => {
       return res.status(400).json({ error: 'Question is required' });
     }
 
+    // Handle general chats without resume ID
     if (!resumeId) {
-      return res.status(400).json({ error: 'Resume ID is required' });
+      console.log(`User ${req.user.id} asking general question: ${question}`);
+      
+      // Provide a general response for chats without resume
+      const generalResponse = {
+        success: true,
+        answer: "I'm an AI assistant specialized in resume analysis and career guidance. For the best experience, please upload a resume so I can provide personalized insights about your career profile, skills, and potential improvements. I can help with resume optimization, career advice, and job search strategies when I have your resume to analyze.",
+        sources: [],
+        metadata: {
+          isGeneralChat: true,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+      return res.json(generalResponse);
     }
 
     console.log(`User ${req.user.id} asking: ${question} (Resume: ${resumeId})`);
