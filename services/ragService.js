@@ -1,4 +1,4 @@
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { RecursiveCharacterTextSplitter } from '@langchain/core/text_splitter';
 import { v4 as uuidv4 } from 'uuid';
 import { Groq } from 'groq-sdk';
 import fs from 'fs';
