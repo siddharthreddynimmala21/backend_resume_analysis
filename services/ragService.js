@@ -38,6 +38,21 @@ const chatHistorySchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// Add new schema for vector embeddings
+const embeddingSchema = new mongoose.Schema({
+  userId: { type: String, required: true, index: true },
+  resumeId: { type: String, required: true, index: true },
+  ids: [String],
+  documents: [String],
+  embeddings: [[Number]],
+  metadata: [{}],
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+embeddingSchema.index({ userId: 1, resumeId: 1 });
+const Embedding = mongoose.model('Embedding', embeddingSchema);
+
 // Compound indexes for efficient queries
 resumeSchema.index({ userId: 1, resumeId: 1 });
 chatHistorySchema.index({ userId: 1, chatId: 1 });
@@ -122,14 +137,17 @@ class RAGService {
   async initializeCollection(userId, resumeId) {
     try {
       const name = this.collectionName(userId, resumeId);
-      
-      // Check if collection exists in memory
       if (!this.collections.has(name)) {
-        // Try to load from file storage (vector embeddings only)
-        const filePath = path.join(this.storageDir, `${name}.json`);
-        if (fs.existsSync(filePath)) {
-          const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-          this.collections.set(name, data);
+        // Try to load from MongoDB
+        const embeddingDoc = await Embedding.findOne({ userId, resumeId });
+        if (embeddingDoc) {
+          this.collections.set(name, {
+            name,
+            documents: embeddingDoc.documents || [],
+            embeddings: embeddingDoc.embeddings || [],
+            metadata: embeddingDoc.metadata || [],
+            ids: embeddingDoc.ids || []
+          });
         } else {
           // Create new collection
           this.collections.set(name, {
@@ -141,7 +159,6 @@ class RAGService {
           });
         }
       }
-      
       return this.collections.get(name);
     } catch (error) {
       console.error('Error initializing collection:', error);
@@ -152,24 +169,19 @@ class RAGService {
   async processAndStoreResume(userId, resumeId, resumeText, fileName) {
     try {
       await this.initMongoDB();
-      
       const collection = await this.initializeCollection(userId, resumeId);
-      
       // Split text into chunks
       const chunks = await this.textSplitter.createDocuments([resumeText]);
-      
       // Clear existing data
       collection.documents = [];
       collection.embeddings = [];
       collection.metadata = [];
       collection.ids = [];
-      
       // Process chunks and generate embeddings
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const id = uuidv4();
         const embedding = await this.embeddings.embedDocuments([chunk.pageContent]);
-        
         collection.ids.push(id);
         collection.documents.push(chunk.pageContent);
         collection.embeddings.push(embedding[0]);
@@ -179,11 +191,20 @@ class RAGService {
           chunkSize: chunk.pageContent.length
         });
       }
-      
-      // Save vector embeddings to file
-      const filePath = path.join(this.storageDir, `${this.collectionName(userId, resumeId)}.json`);
-      fs.writeFileSync(filePath, JSON.stringify(collection, null, 2));
-      
+      // Save vector embeddings to MongoDB
+      await Embedding.findOneAndUpdate(
+        { userId, resumeId },
+        {
+          userId,
+          resumeId,
+          ids: collection.ids,
+          documents: collection.documents,
+          embeddings: collection.embeddings,
+          metadata: collection.metadata,
+          updatedAt: new Date()
+        },
+        { upsert: true, new: true }
+      );
       // Store resume text data in MongoDB
       await Resume.findOneAndUpdate(
         { userId, resumeId },
@@ -198,7 +219,6 @@ class RAGService {
         },
         { upsert: true, new: true }
       );
-      
       return { chunksStored: chunks.length };
     } catch (error) {
       console.error('Error in processAndStoreResume:', error);
@@ -298,21 +318,12 @@ Please provide a helpful, accurate, and professional answer based on the resume 
   async deleteResume(userId, resumeId) {
     try {
       await this.initMongoDB();
-      
       const collectionName = this.collectionName(userId, resumeId);
-      const filePath = path.join(this.storageDir, `${collectionName}.json`);
-      
       // Remove from memory
       this.collections.delete(collectionName);
-      
-      // Remove vector embeddings file if exists
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-      
       // Remove from MongoDB
       await Resume.deleteOne({ userId, resumeId });
-      
+      await Embedding.deleteOne({ userId, resumeId });
       return { success: true, message: `Resume ${resumeId} deleted successfully` };
     } catch (error) {
       console.error('Error in deleteResume:', error);
@@ -324,27 +335,16 @@ Please provide a helpful, accurate, and professional answer based on the resume 
   async deleteUserData(userId) {
     try {
       await this.initMongoDB();
-      
       // Get all user resumes from MongoDB
       const userResumes = await Resume.find({ userId });
-      
-      // Delete each resume's vector embeddings
+      // Remove from memory and delete embeddings from MongoDB
       for (const resume of userResumes) {
         const collectionName = this.collectionName(userId, resume.resumeId);
-        const filePath = path.join(this.storageDir, `${collectionName}.json`);
-        
-        // Remove from memory
         this.collections.delete(collectionName);
-        
-        // Remove file if exists
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
+        await Embedding.deleteOne({ userId, resumeId: resume.resumeId });
       }
-      
       // Remove all user resumes from MongoDB
       await Resume.deleteMany({ userId });
-      
       return { success: true, message: 'All user data deleted successfully' };
     } catch (error) {
       console.error('Error deleting user data:', error);
