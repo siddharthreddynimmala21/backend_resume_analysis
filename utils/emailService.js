@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import PDFDocument from 'pdfkit';
 
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
@@ -107,6 +108,85 @@ const sendOTPEmail = async (email, otp) => {
     }
 };
 
+const generatePdfBufferFromMarkdown = (markdownContent) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ size: 'A4', margin: 50 });
+            const buffers = [];
+            doc.on('data', buffers.push.bind(buffers));
+            doc.on('end', () => {
+                const pdfData = Buffer.concat(buffers);
+                resolve(pdfData);
+            });
+
+            // Basic rendering – we render the markdown literal text. Headings (#, ##, etc.)
+            // will still appear in the PDF. For richer styling we could parse markdown to
+            // HTML and render, but this keeps the dependency footprint minimal and is
+            // sufficient for a simple report.
+            doc.font('Helvetica').fontSize(12).text(markdownContent, {
+                lineGap: 4,
+                paragraphGap: 8,
+                align: 'left'
+            });
+            doc.end();
+        } catch (err) {
+            reject(err);
+        }
+    });
+};
+
+/**
+ * Send a markdown report as a PDF attachment via email.
+ * @param {string} email - Destination email address
+ * @param {string} subject - Email subject
+ * @param {string} markdownContent - Report content in markdown format
+ * @returns {Promise<boolean>}  Whether the email was queued successfully
+ */
+const sendPDFReportEmail = async (email, subject, markdownContent) => {
+    try {
+        console.log('Preparing to send PDF report email to:', email);
+
+        // Generate PDF buffer from markdown
+        const pdfBuffer = await generatePdfBufferFromMarkdown(markdownContent);
+        console.log('PDF buffer generated. Size:', pdfBuffer.length, 'bytes');
+
+        // Get transporter instance (fresh each call)
+        const transporter = getTransporter();
+
+        // Verify transporter
+        await transporter.verify();
+
+        const mailOptions = {
+            from: {
+                name: 'Resume AI',
+                address: process.env.EMAIL_USER
+            },
+            to: email,
+            subject,
+            text: markdownContent, // Fallback
+            attachments: [
+                {
+                    filename: 'resume_report.pdf',
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ]
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log('PDF report email sent:', {
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected
+        });
+        return true;
+    } catch (error) {
+        console.error('Failed to send PDF report email:', error);
+        return false;
+    }
+};
+
 export {
-    sendOTPEmail
+    sendOTPEmail,
+    sendPDFReportEmail
 };

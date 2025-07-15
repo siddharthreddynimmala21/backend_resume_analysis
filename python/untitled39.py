@@ -7,12 +7,30 @@
 import os
 import json
 import re
-import sys  # Add this import statement
+import sys
 from typing import TypedDict, List, Optional
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langgraph.graph import StateGraph, END
-#from langchain.chat_models import ChatOpenAI
+
+# --- Safely import LangChain components ---
+try:
+    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.output_parsers import StrOutputParser
+    from langgraph.graph import StateGraph, END
+except ImportError as e:
+    # If crucial LangChain bits are missing, print a clear message and exit
+    print(f"❌ Missing LangChain dependency: {e}", file=sys.stderr, flush=True)
+    print("👉 Please install dependencies with: pip install langchain langgraph", file=sys.stderr, flush=True)
+    sys.exit(1)
+
+# --- Import ChatOpenAI with fallback for different LangChain versions ---
+try:
+    from langchain.chat_models import ChatOpenAI  # Newer versions
+except ImportError:
+    try:
+        from langchain_community.chat_models import ChatOpenAI  # Older versions
+    except ImportError as e:
+        print(f"❌ Cannot import ChatOpenAI: {e}", file=sys.stderr, flush=True)
+        print("👉 Make sure 'langchain' is installed and up to date.", file=sys.stderr, flush=True)
+        sys.exit(1)
 
 # Ensure UTF-8 encoding for stdout to avoid UnicodeEncodeError on Windows
 if sys.version_info >= (3, 7):
@@ -23,12 +41,21 @@ class ResumeAnalyzer:
         """Initialize the Resume Analyzer with Groq API key"""
         # Directly use the API key passed from JavaScript
         GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-        
-        self.llm = ChatOpenAI(
-            openai_api_base=GROQ_BASE_URL,
-            openai_api_key=groq_api_key,
-            model="llama3-70b-8192"
-        )
+
+        # Warn if API key looks empty / undefined
+        if not groq_api_key or groq_api_key == "undefined":
+            print("⚠️  GROQ_API_KEY is empty or undefined - ChatOpenAI may fail to authenticate.", flush=True)
+
+        try:
+            self.llm = ChatOpenAI(
+                openai_api_base=GROQ_BASE_URL,
+                openai_api_key=groq_api_key,
+                model="llama3-70b-8192"
+            )
+        except Exception as e:
+            print(f"❌ Failed to initialize ChatOpenAI: {e}", file=sys.stderr, flush=True)
+            # Re-raise to be caught by outer try/except in main()
+            raise
         
         # Build the LangGraph workflow
         self.graph = self._build_graph()
@@ -357,6 +384,8 @@ def main():
         sys.exit(1)
     
     try:
+        print("🪵 [untitled39.py] Script started", flush=True)
+        print(f"Arguments received (count={len(sys.argv) - 1}): {sys.argv[1:]}", flush=True)
         # Get parameters from command line arguments
         resume_text = sys.argv[1]
         job_description = sys.argv[2]
@@ -365,6 +394,7 @@ def main():
         experience = sys.argv[5]
         groq_api_key = sys.argv[6]
         
+        print(f"[DEBUG] Parameters received - resume_text length: {len(resume_text)}, job_description length: {len(job_description)}, current_role: {current_role}, target_role: {target_role}, experience: {experience}", flush=True)
         # Initialize analyzer with Groq API key passed as parameter
         analyzer = ResumeAnalyzer(groq_api_key=groq_api_key)
         
@@ -380,7 +410,9 @@ def main():
         # Print the result to be captured by the Node.js process
         print(result)
     except Exception as e:
-        print(f"Error during analysis: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print(f"Error during analysis: {str(e)}", flush=True)
         sys.exit(1)
 
 if __name__ == "__main__":
