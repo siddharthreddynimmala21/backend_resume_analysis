@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
+import { marked } from 'marked';
 
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
@@ -119,15 +120,92 @@ const generatePdfBufferFromMarkdown = (markdownContent) => {
                 resolve(pdfData);
             });
 
-            // Basic rendering – we render the markdown literal text. Headings (#, ##, etc.)
-            // will still appear in the PDF. For richer styling we could parse markdown to
-            // HTML and render, but this keeps the dependency footprint minimal and is
-            // sufficient for a simple report.
-            doc.font('Helvetica').fontSize(12).text(markdownContent, {
-                lineGap: 4,
-                paragraphGap: 8,
-                align: 'left'
+            // ---------- New rendering logic ----------
+            // Add an intro line so the reader knows what the file contains
+            doc.font('Helvetica-Bold').fontSize(14).text('Following is the report:', {
+                align: 'left',
+                paragraphGap: 10
             });
+
+            // Convert the markdown to a reasonably formatted PDF. We intentionally
+            // avoid adding heavy HTML → PDF dependencies and instead handle the
+            // most common markdown patterns (headings, lists, plain paragraphs)
+            // so that a reader does not see the raw markdown symbols (e.g. #, *, **).
+
+            // Split the markdown into lines so we can handle each individually.
+            const lines = markdownContent.split(/\r?\n/);
+
+            lines.forEach((rawLine) => {
+                const line = rawLine.trim();
+
+                if (!line) {
+                    // Blank line = add some vertical space
+                    doc.moveDown(0.5);
+                    return;
+                }
+
+                // Headings (support up to ###)
+                if (line.startsWith('### ')) {
+                    doc.font('Helvetica-Bold').fontSize(14).text(line.replace(/^###\s+/, ''), {
+                        paragraphGap: 6
+                    });
+                    // Reset to body font after heading
+                    doc.font('Helvetica').fontSize(12);
+                    return;
+                }
+                if (line.startsWith('## ')) {
+                    doc.font('Helvetica-Bold').fontSize(16).text(line.replace(/^##\s+/, ''), {
+                        paragraphGap: 8
+                    });
+                    doc.font('Helvetica').fontSize(12);
+                    return;
+                }
+                if (line.startsWith('# ')) {
+                    doc.font('Helvetica-Bold').fontSize(20).text(line.replace(/^#\s+/, ''), {
+                        paragraphGap: 10
+                    });
+                    doc.font('Helvetica').fontSize(12);
+                    return;
+                }
+
+                // Unordered list items (*, -, +)
+                if (/^[*\-+]\s+/.test(line)) {
+                    const text = line.replace(/^[*\-+]\s+/, '');
+                    doc.text(`• ${text}`, {
+                        indent: 20,
+                        paragraphGap: 2,
+                        lineGap: 2
+                    });
+                    return;
+                }
+
+                // Numbered list items (e.g. 1. Foo)
+                if (/^\d+\.\s+/.test(line)) {
+                    const match = line.match(/^(\d+)\.\s+(.*)$/);
+                    if (match) {
+                        const [, num, text] = match;
+                        doc.text(`${num}. ${text}`, {
+                            indent: 20,
+                            paragraphGap: 2,
+                            lineGap: 2
+                        });
+                        return;
+                    }
+                }
+
+                // Bold text (**text**)
+                if (/\*\*[\s\S]+\*\*/.test(line)) {
+                    const plain = line.replace(/\*\*/g, '');
+                    doc.font('Helvetica-Bold').text(plain);
+                    doc.font('Helvetica');
+                    return;
+                }
+
+                // Italic text (*text*) → just render as plain
+                const cleaned = line.replace(/\*/g, '');
+                doc.text(cleaned);
+            });
+
             doc.end();
         } catch (err) {
             reject(err);
@@ -163,7 +241,9 @@ const sendPDFReportEmail = async (email, subject, markdownContent) => {
             },
             to: email,
             subject,
-            text: markdownContent, // Fallback
+            // We purposefully do NOT include the full report in the email body so that
+            // users only see the content inside the attached PDF as requested.
+            text: 'Your requested report is attached as a PDF. Please find it enclosed.',
             attachments: [
                 {
                     filename: 'resume_report.pdf',
@@ -186,7 +266,51 @@ const sendPDFReportEmail = async (email, subject, markdownContent) => {
     }
 };
 
+/**
+ * Send a markdown report as an email body (no attachments).
+ * The markdown is converted to HTML so the recipient sees rich formatting.
+ * @param {string} email Recipient address
+ * @param {string} subject Subject line
+ * @param {string} markdownContent Report content in markdown format
+ */
+const sendMarkdownReportEmail = async (email, subject, markdownContent) => {
+    try {
+        console.log('Preparing to send Markdown report email to:', email);
+
+        // Get transporter instance
+        const transporter = getTransporter();
+        await transporter.verify();
+
+        // Convert markdown to HTML and prepend intro line
+        const introHtml = '<p><strong>Following is the report:</strong></p>';
+        const htmlContent = introHtml + marked.parse(markdownContent);
+
+        const mailOptions = {
+            from: {
+                name: 'Resume AI',
+                address: process.env.EMAIL_USER
+            },
+            to: email,
+            subject,
+            text: markdownContent, // Plain-text fallback (still markdown)
+            html: htmlContent // Rich HTML version
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Markdown report email sent:', {
+            messageId: info.messageId,
+            accepted: info.accepted,
+            rejected: info.rejected
+        });
+        return true;
+    } catch (error) {
+        console.error('Failed to send Markdown report email:', error);
+        return false;
+    }
+};
+
 export {
     sendOTPEmail,
-    sendPDFReportEmail
+    sendPDFReportEmail,
+    sendMarkdownReportEmail
 };
