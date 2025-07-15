@@ -139,7 +139,7 @@ class ResumeAnalyzer:
         skills_match_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are an expert career analyst."),
             ("user", """
-            Given the extracted skills, job description, and target role, generate a **Skills Match Report**.
+            Given the extracted skills, job description, and target role, generate a **Skills Match Report** without any emojis.
 
             ## Report Format (Markdown):
             - **Skill Match Score**: (score out of 100)
@@ -156,7 +156,7 @@ class ResumeAnalyzer:
         role_relevance_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a career path advisor."),
             ("user", """
-            Compare the user's **current role** and **target role**, and generate a **Role Relevance Report**.
+            Compare the user's **current role** and **target role**, and generate a **Role Relevance Report** without any emojis.
 
             ## Report Format (Markdown):
             - **Role Relevance Score**: (score out of 100)
@@ -172,7 +172,7 @@ class ResumeAnalyzer:
         work_experience_rewrite_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a resume optimization expert."),
             ("user", """
-            Given the following work experiences, job description, and target role, rewrite each experience with the following format in markdown:
+            Given the following work experiences, job description, and target role, rewrite each experience with the following format in markdown without any emojis:
 
             ## For each experience:
             - **Original**: original experience description
@@ -190,7 +190,7 @@ class ResumeAnalyzer:
         projects_rewrite_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a resume optimization expert."),
             ("user", """
-            Given the following projects, job description, and target role, rewrite each project with the following format in markdown:
+            Given the following projects, job description, and target role, rewrite each project with the following format in markdown without any emojis:
 
             ## For each project:
             - **Original**: original project description
@@ -281,31 +281,31 @@ class ResumeAnalyzer:
             work_exp = state.get("work_experience_report", "")
 
             final_report = f"""
-# 🧾 Final Career Analysis Report
+#Final Career Analysis Report
 
 ---
 
-## ✅ Skills Match Report
+##Skills Match Report
 {skills}
 
 ---
 
-## 🎯 Role Relevance Report
+##Role Relevance Report
 {relevance}
 
 ---
 
-## 💻 Improved Projects (Aligned to JD & Target Role)
+##Improved Projects (Aligned to JD & Target Role)
 {projects}
 
 ---
 
-## 💼 Improved Work Experience (Aligned to JD & Target Role)
+##Improved Work Experience (Aligned to JD & Target Role)
 {work_exp}
 
 ---
 
-### 📝 Summary
+###Summary
 - This report evaluates your readiness for the target role.
 - Use the suggestions to improve your fit and bridge any gaps.
 """
@@ -401,7 +401,7 @@ def main():
         # Analyze resume with the provided parameters
         result = analyzer.analyze_resume(
             resume_text=resume_text,
-            job_description=job_description,
+            job_description=job_description, 
             current_role=current_role,
             target_role=target_role,
             experience=experience

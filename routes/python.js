@@ -4,7 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { PDFExtract } from 'pdf.js-extract';
-import { sendPDFReportEmail } from '../utils/emailService.js';
+import { sendMarkdownReportEmail } from '../utils/emailService.js';
+import auth from '../middleware/auth.js'
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -106,7 +107,7 @@ router.get('/hello', (req, res) => {
 });
 
 // Route to analyze resume using Python script
-router.post('/analyze-resume', upload.single('resume'), async (req, res) => {
+router.post('/analyze-resume', auth, upload.single('resume'), async (req, res) => {
     console.log('Resume analysis route called');
     
     if (!req.file) {
@@ -212,8 +213,8 @@ router.post('/analyze-resume', upload.single('resume'), async (req, res) => {
             const markdownReport = `# Resume Analysis Report\n\n${output}`;
             // Attempt to send the report email before responding
             try {
-                await sendPDFReportEmail('siddharthreddynimmala@gmail.com', 'Your Resume Analysis Report', markdownReport);
-                console.log('Report email successfully sent to siddharthreddynimmala@gmail.com');
+                await sendMarkdownReportEmail(req.user.email, 'Your Resume Analysis Report', markdownReport);
+                console.log(`Report email successfully sent to ${req.user.email}`);
             } catch (emailErr) {
                 console.error('Failed to send report email:', emailErr);
             }
