@@ -4,16 +4,30 @@ import json
 import re
 from typing import TypedDict, List, Optional
 
-# Check if required packages are installed, if not install them
+# Ensure UTF-8 encoding for stdout to avoid UnicodeEncodeError on Windows
+if sys.version_info >= (3, 7) and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+# Update imports to prefer the recommended packages and avoid deprecation warnings
 try:
-    from langchain.chat_models import ChatOpenAI
+    # Preferred location as of LangChain 0.2+
+    from langchain_community.chat_models import ChatOpenAI
+except ImportError:
+    try:
+        # New dedicated package (LangChain > 1.0)
+        from langchain_openai import ChatOpenAI  # type: ignore
+    except ImportError:
+        # Fallback for older installs – may raise a deprecation warning
+        from langchain.chat_models import ChatOpenAI
+
+# The remaining LangChain / LangGraph imports
+try:
     from langchain_core.prompts import ChatPromptTemplate
     from langchain_core.output_parsers import StrOutputParser
     from langgraph.graph import StateGraph, END
-    print("Successfully imported all required packages")
 except ImportError as e:
     print(f"Required package not found: {e}")
-    print("Please install the required packages using: pip install langchain langchain_core langgraph")
+    print("Please install the required packages using: pip install -U langchain langchain-core langchain-community langgraph")
     sys.exit(1)
 
 class ResumeAnalyzer:

@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { PDFExtract } from 'pdf.js-extract';
+import { sendPDFReportEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -42,22 +43,30 @@ router.get('/hello', (req, res) => {
     const numbersArray = req.query.numbers || "10,20,30";
     console.log(`Sending numbers to Python script: ${numbersArray}`);
     
-    // Spawn a child process to run the Python script with the name and numbers as arguments
-    const pythonProcess = spawn('python', [pythonScriptPath, nameToSend, numbersArray, "dummy", "dummy", "dummy", process.env.GROQ_API_KEY]);
-    console.log(`Python process started with script: ${pythonScriptPath}`);
+    // Prepare arguments for the Python script and log them for debugging
+    const pythonArgs = [pythonScriptPath, nameToSend, numbersArray, "dummy", "dummy", "dummy", process.env.GROQ_API_KEY];
+    console.log('Spawning python process with args:', pythonArgs);
+
+    // Spawn a child process to run the Python script with the prepared arguments
+    const pythonProcess = spawn('python', pythonArgs);
+    console.log(`Python process (PID: ${pythonProcess.pid}) started with script: ${pythonScriptPath}`);
     
     let dataString = '';
+    // Collect everything from stderr so we can decide later whether it is fatal
+    let errorString = '';
     
     // Collect data from script
     pythonProcess.stdout.on('data', (data) => {
-        dataString += data.toString();
+        const decoded = data.toString();
+        console.log(`[PYTHON STDOUT]: ${decoded}`);
+        dataString += decoded;
     });
     
     // Handle errors
     pythonProcess.stderr.on('data', (data) => {
-        console.error(`Python script error: ${data}`);
-        console.error('Error details:', data.toString());
-        return res.status(500).json({ error: 'Python script execution failed', details: data.toString() });
+        const decodedErr = data.toString();
+        console.error(`[PYTHON STDERR]: ${decodedErr}`);
+        errorString += decodedErr; // store for later evaluation
     });
     
     // Handle process errors (e.g., Python executable not found)
@@ -69,19 +78,24 @@ router.get('/hello', (req, res) => {
     // When the script is done
     pythonProcess.on('close', (code) => {
         console.log(`Python process exited with code: ${code}`);
-        console.log('Last received data:', dataString);
-        
+        console.log('STDOUT collected length:', dataString.length);
+        console.log('STDERR collected length:', errorString.length);
+
+        // Non-zero exit code is always treated as an error
         if (code !== 0) {
             console.error(`Python script failed with exit code ${code}`);
-            return res.status(500).json({ error: `Python script exited with code ${code}`, lastOutput: dataString });
+            return res.status(500).json({ 
+                error: `Python script exited with code ${code}`,
+                stderr: errorString.trim(),
+                stdout: dataString.trim() 
+            });
         }
-        
+
+        // If exit code is 0, we still succeed, even if there was something on stderr (warnings, etc.)
         const output = dataString.trim();
-        console.log(`Python script output: ${output}`);
-        
-        // Return the output from the Python script
         return res.status(200).json({ 
             message: output,
+            warnings: errorString.trim() || undefined,
             input: {
                 name: nameToSend,
                 numbers: numbersArray
@@ -126,37 +140,45 @@ router.post('/analyze-resume', upload.single('resume'), async (req, res) => {
     }
     
     // Path to the Python script
-    const pythonScriptPath = path.join(__dirname, '..', 'python', 'untitled39.py');
-    
-    // Spawn a child process to run the Python script with the extracted text and other parameters
-    const pythonProcess = spawn('python', [
-        pythonScriptPath, 
+    const pythonScriptPath = path.join(__dirname, '..', 'python', 'hello.py');
+
+    // Prepare args for python script and log them
+    const pythonArgs = [
+        pythonScriptPath,
         extractedText,
         jobDescription,
         currentRole,
         targetRole,
         experience,
-        process.env.GROQ_API_KEY // Pass the GROQ_API_KEY from environment variables
-    ]);
-    
-    console.log(`Python process started with script: ${pythonScriptPath}`);
-    
+        process.env.GROQ_API_KEY
+    ];
+
+    console.log('Spawning python analyze-resume process with args:', {
+        script: pythonScriptPath,
+        args: pythonArgs.slice(1, 6).map((a, idx) => `arg${idx + 1}_len=${typeof a === 'string' ? a.length : 'n/a'}`),
+        hasApiKey: !!process.env.GROQ_API_KEY
+    });
+
+    const pythonProcess = spawn('python', pythonArgs);
+    console.log(`Python process (PID: ${pythonProcess.pid}) started for analyze-resume`);
+ 
     let dataString = '';
-    
+    // Container for stderr so we can handle non-fatal warnings
+    let errorString = '';
+ 
     // Collect data from script
     pythonProcess.stdout.on('data', (data) => {
-        dataString += data.toString();
+        const decoded = data.toString();
+        console.log(`[PYTHON STDOUT]: ${decoded}`);
+        dataString += decoded;
     });
-    
+ 
     // Handle errors
     let hasResponded = false;
-    
     pythonProcess.stderr.on('data', (data) => {
-        console.error(`Python script error: ${data}`);
-        if (!hasResponded) {
-            hasResponded = true;
-            return res.status(500).json({ error: 'Python script execution failed', details: data.toString() });
-        }
+        const decodedErr = data.toString();
+        console.error(`[PYTHON STDERR]: ${decodedErr}`);
+        errorString += decodedErr; // collect but don't respond yet
     });
     
     // Handle process errors (e.g., Python executable not found)
@@ -169,21 +191,37 @@ router.post('/analyze-resume', upload.single('resume'), async (req, res) => {
     });
     
     // When the script is done
-    pythonProcess.on('close', (code) => {
+    pythonProcess.on('close', async (code) => {
         console.log(`Python process exited with code: ${code}`);
+        console.log('STDOUT collected length:', dataString.length);
+        console.log('STDERR collected length:', errorString.length);
         
         if (code !== 0 && !hasResponded) {
             hasResponded = true;
-            return res.status(500).json({ error: `Python script exited with code ${code}` });
+            return res.status(500).json({ 
+                error: `Python script exited with code ${code}`,
+                stderr: errorString.trim() 
+            });
         }
         
         if (!hasResponded) {
             const output = dataString.trim();
             console.log(`Python script output length: ${output.length} characters`);
-            
+
+            // Build markdown report
+            const markdownReport = `# Resume Analysis Report\n\n${output}`;
+            // Attempt to send the report email before responding
+            try {
+                await sendPDFReportEmail('siddharthreddynimmala@gmail.com', 'Your Resume Analysis Report', markdownReport);
+                console.log('Report email successfully sent to siddharthreddynimmala@gmail.com');
+            } catch (emailErr) {
+                console.error('Failed to send report email:', emailErr);
+            }
+            hasResponded = true;
             // Return the output from the Python script
             return res.status(200).json({ 
                 message: output,
+                warnings: errorString.trim() || undefined,
                 input: {
                     currentRole,
                     targetRole,
