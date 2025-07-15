@@ -5,3 +5,4 @@ langgraph
 groq
 python-dotenv
 langchain_community
+openai

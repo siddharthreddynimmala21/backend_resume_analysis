@@ -115,13 +115,49 @@ router.post('/analyze-resume', auth, upload.single('resume'), async (req, res) =
     }
     
     // Extract required fields from request body
-    const { currentRole, targetRole, experience, jobDescription } = req.body;
+    const { currentRole, targetRole, experience, jobDescription, generateJobDescription } = req.body;
     
     // Validate required fields
-    if (!currentRole || !targetRole || !experience || !jobDescription) {
+    if (!currentRole || !targetRole || !experience) {
         return res.status(400).json({ 
             error: 'Missing required fields', 
-            details: 'Please provide currentRole, targetRole, experience, and jobDescription' 
+            details: 'Please provide currentRole, targetRole, and experience' 
+        });
+    }
+    
+    // Check if we need to generate a job description
+    let finalJobDescription = jobDescription;
+    if (generateJobDescription === 'true') {
+        try {
+            console.log('Generating job description using Groq API...');
+            // Import the Groq API function
+            const { generateResponse } = await import('../GroqApi.js');
+            
+            // Create a prompt for generating a job description
+            const prompt = `Generate a detailed job description for a ${targetRole} position with ${experience} years of experience requirement. 
+
+The job description should include:
+- Required skills and qualifications
+- Responsibilities
+- Preferred experience
+- Education requirements
+
+Make it detailed and professional, suitable for use in resume analysis.`;
+            
+            // Generate the job description
+            finalJobDescription = await generateResponse(prompt);
+            console.log('Job description generated successfully');
+        } catch (error) {
+            console.error('Error generating job description:', error);
+            return res.status(500).json({ 
+                error: 'Failed to generate job description', 
+                details: error.message 
+            });
+        }
+    } else if (!jobDescription) {
+        return res.status(400).json({ 
+            error: 'Missing job description', 
+            details: 'Please provide a job description or select the option to generate one' 
         });
     }
     
@@ -147,7 +183,7 @@ router.post('/analyze-resume', auth, upload.single('resume'), async (req, res) =
     const pythonArgs = [
         pythonScriptPath,
         extractedText,
-        jobDescription,
+        finalJobDescription,
         currentRole,
         targetRole,
         experience,
@@ -227,7 +263,8 @@ router.post('/analyze-resume', auth, upload.single('resume'), async (req, res) =
                     currentRole,
                     targetRole,
                     experience,
-                    jobDescription: jobDescription.substring(0, 100) + '...' // Truncate for logging
+                    jobDescription: finalJobDescription.substring(0, 100) + '...', // Truncate for logging
+                    generatedJobDescription: generateJobDescription === 'true'
                 },
                 success: true
             });

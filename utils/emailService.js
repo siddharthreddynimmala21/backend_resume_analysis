@@ -109,7 +109,7 @@ const sendOTPEmail = async (email, otp) => {
     }
 };
 
-const generatePdfBufferFromMarkdown = (markdownContent) => {
+const generatePdfBufferFromMarkdown = (markdownContent, email = '') => {
     return new Promise((resolve, reject) => {
         try {
             const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -121,6 +121,39 @@ const generatePdfBufferFromMarkdown = (markdownContent) => {
             });
 
             // ---------- New rendering logic ----------
+            // Extract user's first name from email if provided
+            if (email) {
+                const firstName = email.split('@')[0].split('.')[0];
+                // Capitalize first letter of the name
+                const capitalizedName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+                
+                // Add greeting with user's name
+                doc.font('Helvetica').fontSize(12).text(`Hi ${capitalizedName},`, {
+                    align: 'left',
+                    paragraphGap: 5
+                });
+                
+                doc.font('Helvetica').fontSize(12).text('Greetings from ResumeRefiner! 👋', {
+                    align: 'left',
+                    paragraphGap: 5
+                });
+                
+                doc.font('Helvetica').fontSize(12).text('Thank you for using our AI-powered resume optimization tool. We appreciate your patience while we thoroughly analyzed your resume in alignment with your target role.', {
+                    align: 'left',
+                    paragraphGap: 5
+                });
+                
+                doc.font('Helvetica').fontSize(12).text('We\'re excited to share your Final Career Analysis Report below. This detailed report provides valuable insights into your strengths, skill alignment, and suggestions to help you move closer to your career goals.', {
+                    align: 'left',
+                    paragraphGap: 5
+                });
+                
+                doc.font('Helvetica').fontSize(12).text('Please find your report below:', {
+                    align: 'left',
+                    paragraphGap: 10
+                });
+            }
+            
             // Add an intro line so the reader knows what the file contains
             doc.font('Helvetica-Bold').fontSize(14).text('Following is the report:', {
                 align: 'left',
@@ -224,8 +257,8 @@ const sendPDFReportEmail = async (email, subject, markdownContent) => {
     try {
         console.log('Preparing to send PDF report email to:', email);
 
-        // Generate PDF buffer from markdown
-        const pdfBuffer = await generatePdfBufferFromMarkdown(markdownContent);
+        // Generate PDF buffer from markdown, passing the email for personalization
+        const pdfBuffer = await generatePdfBufferFromMarkdown(markdownContent, email);
         console.log('PDF buffer generated. Size:', pdfBuffer.length, 'bytes');
 
         // Get transporter instance (fresh each call)
@@ -280,10 +313,26 @@ const sendMarkdownReportEmail = async (email, subject, markdownContent) => {
         // Get transporter instance
         const transporter = getTransporter();
         await transporter.verify();
-
-        // Convert markdown to HTML and prepend intro line
+        
+        // Extract user's first name from email
+        const firstName = email.split('@')[0].split('.')[0];
+        // Capitalize first letter of the name
+        const capitalizedName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+        
+        // Create greeting with user's name
+        const greetingHtml = `
+        <div style="margin-bottom: 20px;">
+            <p>Hi ${capitalizedName},</p>
+            <p>Greetings from ResumeRefiner! 👋</p>
+            <p>Thank you for using our AI-powered resume optimization tool. We appreciate your patience while we thoroughly analyzed your resume in alignment with your target role.</p>
+            <p>We're excited to share your Final Career Analysis Report below. This detailed report provides valuable insights into your strengths, skill alignment, and suggestions to help you move closer to your career goals.</p>
+            <p>Please find your report below:</p>
+        </div>
+        `;
+        
+        // Convert markdown to HTML and prepend intro line and greeting
         const introHtml = '<p><strong>Following is the report:</strong></p>';
-        const htmlContent = introHtml + marked.parse(markdownContent);
+        const htmlContent = greetingHtml + introHtml + marked.parse(markdownContent);
 
         const mailOptions = {
             from: {
