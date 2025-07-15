@@ -83,9 +83,11 @@ app.get('/test', (req, res) => {
 // Routes
 import authRouter from './routes/auth.js';
 import chatRouter from './routes/chat.js';
+import pythonRouter from './routes/python.js';
 app.use('/api/auth', authRouter);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/chat', chatRouter);
+app.use('/api/python', pythonRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {
