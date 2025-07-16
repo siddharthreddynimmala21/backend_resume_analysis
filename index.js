@@ -91,7 +91,7 @@ app.use('/api/python', pythonRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {
-  res.json({ message: 'server is available' });
+  res.send('hello');
 });
 
 // Error handling
