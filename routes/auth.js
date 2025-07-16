@@ -45,7 +45,7 @@ router.post('/register', async (req, res) => {
             return res.status(500).json({ message: 'Failed to send OTP email' });
         }
 
-        res.status(200).json({ 
+        return res.status(200).json({ 
             message: 'OTP sent successfully', 
             email,
             isVerified: user.isVerified,
@@ -75,7 +75,7 @@ router.post('/verify-otp', async (req, res) => {
         user.isVerified = true;
         user.clearOTP();
         await user.save();
-        res.status(200).json({ 
+        return res.status(200).json({ 
             message: 'OTP verified successfully',
             hasPassword: user.hasPassword,
             isVerified: true
