@@ -5,19 +5,19 @@ dotenv.config();
 import RAGService from './services/ragService.js';
 
 async function testMultiResumeFeatures() {
-    console.log('🧪 Testing Multi-Resume RAG Service...\n');
+    //console.log('🧪 Testing Multi-Resume RAG Service...\n');
     
     const ragService = new RAGService();
     const testUserId = 'test_user_123';
     
     try {
         // Test 1: Check initial state
-        console.log('1️⃣ Testing initial state...');
+        //console.log('1️⃣ Testing initial state...');
         const initialResumes = await ragService.getUserResumes(testUserId);
-        console.log(`   Initial resumes count: ${initialResumes.length}`);
+        //console.log(`   Initial resumes count: ${initialResumes.length}`);
         
         // Test 2: Add multiple resumes
-        console.log('\n2️⃣ Testing resume storage...');
+        //console.log('\n2️⃣ Testing resume storage...');
         
         const sampleResumes = [
             {
@@ -38,26 +38,26 @@ async function testMultiResumeFeatures() {
         ];
         
         for (const resume of sampleResumes) {
-            console.log(`   Adding resume: ${resume.fileName}`);
+            //console.log(`   Adding resume: ${resume.fileName}`);
             const result = await ragService.processAndStoreResume(
                 testUserId, 
                 resume.id, 
                 resume.text, 
                 resume.fileName
             );
-            console.log(`   ✅ Stored ${result.chunksStored} chunks`);
+            //console.log(`   ✅ Stored ${result.chunksStored} chunks`);
         }
         
         // Test 3: List all resumes
-        console.log('\n3️⃣ Testing resume listing...');
+        //console.log('\n3️⃣ Testing resume listing...');
         const allResumes = await ragService.getUserResumes(testUserId);
-        console.log(`   Total resumes: ${allResumes.length}`);
+        //console.log(`   Total resumes: ${allResumes.length}`);
         allResumes.forEach((resume, index) => {
-            console.log(`   ${index + 1}. ${resume.fileName} (${resume.chunksCount} chunks)`);
+            //console.log(`   ${index + 1}. ${resume.fileName} (${resume.chunksCount} chunks)`);
         });
         
         // Test 4: Query specific resumes
-        console.log('\n4️⃣ Testing resume queries...');
+        //console.log('\n4️⃣ Testing resume queries...');
         
         const queries = [
             { resumeId: 'resume_1', question: 'What programming languages does this person know?' },
@@ -66,54 +66,54 @@ async function testMultiResumeFeatures() {
         ];
         
         for (const query of queries) {
-            console.log(`   Querying ${query.resumeId}: "${query.question}"`);
+            //console.log(`   Querying ${query.resumeId}: "${query.question}"`);
             const result = await ragService.queryResume(testUserId, query.resumeId, query.question);
             if (result.success) {
-                console.log(`   ✅ Answer: ${result.answer.substring(0, 100)}...`);
-                console.log(`   📊 Confidence: ${result.confidence.toFixed(3)}`);
+                //console.log(`   ✅ Answer: ${result.answer.substring(0, 100)}...`);
+                //console.log(`   📊 Confidence: ${result.confidence.toFixed(3)}`);
             } else {
-                console.log(`   ❌ Query failed: ${result.message}`);
+                //console.log(`   ❌ Query failed: ${result.message}`);
             }
         }
         
         // Test 5: Delete specific resume
-        console.log('\n5️⃣ Testing resume deletion...');
-        console.log('   Deleting resume_2...');
+        //console.log('\n5️⃣ Testing resume deletion...');
+        //console.log('   Deleting resume_2...');
         await ragService.deleteResume(testUserId, 'resume_2');
         
         const remainingResumes = await ragService.getUserResumes(testUserId);
-        console.log(`   ✅ Remaining resumes: ${remainingResumes.length}`);
+        //console.log(`   ✅ Remaining resumes: ${remainingResumes.length}`);
         remainingResumes.forEach((resume, index) => {
-            console.log(`   ${index + 1}. ${resume.fileName}`);
+            //console.log(`   ${index + 1}. ${resume.fileName}`);
         });
         
         // Test 6: Verify deleted resume can't be queried
-        console.log('\n6️⃣ Testing deleted resume query...');
+        //console.log('\n6️⃣ Testing deleted resume query...');
         const deletedQuery = await ragService.queryResume(testUserId, 'resume_2', 'What is your experience?');
         if (!deletedQuery.success) {
-            console.log(`   ✅ Correctly rejected query to deleted resume: ${deletedQuery.message}`);
+            //console.log(`   ✅ Correctly rejected query to deleted resume: ${deletedQuery.message}`);
         } else {
-            console.log(`   ❌ Unexpectedly allowed query to deleted resume`);
+            //console.log(`   ❌ Unexpectedly allowed query to deleted resume`);
         }
         
         // Test 7: Clean up
-        console.log('\n7️⃣ Cleaning up test data...');
+        //console.log('\n7️⃣ Cleaning up test data...');
         await ragService.deleteUserData(testUserId);
         const finalResumes = await ragService.getUserResumes(testUserId);
-        console.log(`   ✅ Final cleanup: ${finalResumes.length} resumes remaining`);
+        //console.log(`   ✅ Final cleanup: ${finalResumes.length} resumes remaining`);
         
-        console.log('\n🎉 All tests completed successfully!');
+        //console.log('\n🎉 All tests completed successfully!');
         
     } catch (error) {
-        console.error('\n❌ Test failed:', error);
+        //console.error('\n❌ Test failed:', error);
     }
 }
 
 // Run the test
 testMultiResumeFeatures().then(() => {
-    console.log('\n✨ Test script finished');
+    //console.log('\n✨ Test script finished');
     process.exit(0);
 }).catch(error => {
-    console.error('Test script error:', error);
+    //console.error('Test script error:', error);
     process.exit(1);
 });

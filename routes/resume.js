@@ -18,9 +18,9 @@ const upload = multer({
 const pdfExtract = new PDFExtract();
 
 // Initialize Gemini AI
-console.log('Initializing Gemini AI...');
-console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
-console.log('GEMINI_API_KEY length:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0);
+//console.log('Initializing Gemini AI...');
+//console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
+//console.log('GEMINI_API_KEY length:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0);
 
 if (!process.env.GEMINI_API_KEY) {
   console.error('❌ GEMINI_API_KEY environment variable is not set!');
@@ -59,17 +59,15 @@ const model = genAI.getGenerativeModel({
  * Middleware to log detailed request information
  */
 const logRequestDetails = (req, res, next) => {
-  console.log('=== Resume Parse Request ===');
-  console.log('Request Method:', req.method);
-  console.log('Request Path:', req.path);
-  console.log('Request Headers:', req.headers);
-  console.log('Request Origin:', req.get('origin'));
-  console.log('Request Host:', req.get('host'));
+  // console.log('=== Resume Parse Request ===');
+  // console.log('Request Method:', req.method);
+  // console.log('Request Path:', req.path);
+  // console.log('Request Headers:', req.headers);
+  // console.log('Request Origin:', req.get('origin'));
+  // console.log('Request Host:', req.get('host'));
   
   // Log request body if it exists
-  if (req.body) {
-    console.log('Request Body:', req.body);
-  }
+
   
   next();
 };
@@ -87,7 +85,7 @@ const timeout = (req, res, next) => {
  * Test endpoint to verify the resume route is working
  */
 router.get('/test', (req, res) => {
-  console.log('Resume test endpoint hit');
+  //console.log('Resume test endpoint hit');
   res.json({ 
     message: 'Resume route is working!',
     timestamp: new Date().toISOString(),
@@ -100,9 +98,9 @@ router.get('/test', (req, res) => {
  */
 router.get('/test-ai', async (req, res) => {
   try {
-    console.log('Testing Gemini API...');
-    console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
-    console.log('GEMINI_API_KEY length:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0);
+    // console.log('Testing Gemini API...');
+    // console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY);
+    // console.log('GEMINI_API_KEY length:', process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.length : 0);
     
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ 
@@ -143,17 +141,11 @@ router.post('/analyze',
   upload.single('resume'), 
   async (req, res) => {
   try {
-    console.log('Resume analysis request received');
-    console.log('Request file details:', req.file ? {
-      fieldname: req.file.fieldname,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size
-    } : 'No file');
+
 
     // Check if file was uploaded
     if (!req.file) {
-      console.error('No file uploaded');
+
       return res.status(400).json({ 
         error: 'No PDF file uploaded',
         message: 'Please select a PDF file to upload' 
@@ -162,7 +154,7 @@ router.post('/analyze',
 
     // Validate file type is PDF
     if (req.file.mimetype !== 'application/pdf') {
-      console.error('Invalid file type:', req.file.mimetype);
+
       return res.status(400).json({ 
         error: 'Invalid file type',
         message: 'Only PDF files are allowed' 
@@ -171,7 +163,7 @@ router.post('/analyze',
 
     // Ensure buffer is valid
     if (!req.file.buffer || req.file.buffer.length === 0) {
-      console.error('Invalid or empty PDF buffer');
+
       return res.status(400).json({ 
         error: 'Invalid PDF file',
         message: 'The uploaded PDF file is empty or corrupted' 
@@ -181,12 +173,11 @@ router.post('/analyze',
     // Parse PDF to extract text
     let extractedText = '';
     try {
-      console.log('Starting PDF extraction...');
+      //console.log('Starting PDF extraction...');
       const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
       extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
-      console.log('PDF extraction completed successfully');
+      //console.log('PDF extraction completed successfully');
     } catch (parseError) {
-      console.error('PDF Parsing Specific Error:', parseError);
       return res.status(400).json({ 
         error: 'PDF Parsing Failed',
         message: 'Unable to extract text from the PDF',
@@ -196,7 +187,6 @@ router.post('/analyze',
 
     // Validate extracted text
     if (!extractedText) {
-      console.error('No text extracted from PDF');
       return res.status(400).json({ 
         error: 'No Text Extracted',
         message: 'No text could be extracted from the PDF' 
@@ -257,12 +247,12 @@ Important: Return ONLY the JSON object, no additional text or explanations. Ensu
 `;
 
     try {
-      console.log('Calling Gemini API...');
+
       const result = await model.generateContent(analysisPrompt);
       const response = await result.response;
       const aiResponse = response.text();
       
-      console.log('AI Analysis Response:', aiResponse);
+
       
       // Try to parse the JSON response
       let structuredData;
@@ -275,8 +265,7 @@ Important: Return ONLY the JSON object, no additional text or explanations. Ensu
           throw new Error('No JSON found in response');
         }
       } catch (parseError) {
-        console.error('JSON Parsing Error:', parseError);
-        console.log('Raw AI Response:', aiResponse);
+
         
         // Fallback: return the raw text with basic structure
         structuredData = {
@@ -296,13 +285,7 @@ Important: Return ONLY the JSON object, no additional text or explanations. Ensu
       });
 
     } catch (aiError) {
-      console.error('AI Analysis Error:', aiError);
-      console.error('Error details:', {
-        message: aiError.message,
-        status: aiError.status,
-        statusText: aiError.statusText,
-        errorDetails: aiError.errorDetails
-      });
+
       
       return res.status(500).json({ 
         error: 'AI Analysis Failed',
@@ -313,7 +296,7 @@ Important: Return ONLY the JSON object, no additional text or explanations. Ensu
     }
 
   } catch (error) {
-    console.error('Resume Analysis Unexpected Error:', error);
+
     res.status(500).json({ 
       error: 'Internal Server Error',
       message: 'An unexpected error occurred while processing the resume',
@@ -332,17 +315,7 @@ router.post('/parse',
   upload.single('resume'), 
   async (req, res) => {
   try {
-    console.log('Resume upload request received');
-    console.log('Request file details:', req.file ? {
-      fieldname: req.file.fieldname,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size
-    } : 'No file');
 
-    // Detailed logging of request body and headers
-    console.log('Request body:', req.body);
-    console.log('Request headers:', req.headers);
 
     // Check if file was uploaded
     if (!req.file) {
@@ -355,7 +328,7 @@ router.post('/parse',
 
     // Validate file type is PDF
     if (req.file.mimetype !== 'application/pdf') {
-      console.error('Invalid file type:', req.file.mimetype);
+
       return res.status(400).json({ 
         error: 'Invalid file type',
         message: 'Only PDF files are allowed' 
@@ -364,7 +337,7 @@ router.post('/parse',
 
     // Ensure buffer is valid
     if (!req.file.buffer || req.file.buffer.length === 0) {
-      console.error('Invalid or empty PDF buffer');
+
       return res.status(400).json({ 
         error: 'Invalid PDF file',
         message: 'The uploaded PDF file is empty or corrupted' 
@@ -374,12 +347,12 @@ router.post('/parse',
     // Parse PDF to extract text
     let extractedText = '';
     try {
-      console.log('Starting PDF extraction...');
+
       const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
       extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
-      console.log('PDF extraction completed successfully');
+
     } catch (parseError) {
-      console.error('PDF Parsing Specific Error:', parseError);
+
       return res.status(400).json({ 
         error: 'PDF Parsing Failed',
         message: 'Unable to extract text from the PDF',
@@ -389,7 +362,7 @@ router.post('/parse',
 
     // Validate extracted text
     if (!extractedText) {
-      console.error('No text extracted from PDF');
+
       return res.status(400).json({ 
         error: 'No Text Extracted',
         message: 'No text could be extracted from the PDF' 
@@ -397,9 +370,7 @@ router.post('/parse',
     }
 
     // Log first 500 characters of extracted text
-    console.log('Extracted Resume Text (first 500 chars):', 
-      extractedText.substring(0, 500) + '...'
-    );
+    
 
     // Return extracted text
     res.json({ 
@@ -513,7 +484,7 @@ router.post('/generate-jd', async (req, res) => {
     const jd = response.text();
     res.json({ jobDescription: jd });
   } catch (error) {
-    console.error('Error generating job description:', error);
+
     let errorMessage = 'Failed to generate job description';
     let errorDetails = error.message;
 
@@ -549,7 +520,7 @@ router.post('/role-relevance', async (req, res) => {
     const report = response.text();
     res.json({ report });
   } catch (error) {
-    console.error('Error getting role relevance score:', error);
+
     let errorMessage = 'Failed to get role relevance score';
     let errorDetails = error.message;
 

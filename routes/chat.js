@@ -42,16 +42,13 @@ const upload = multer({
 // Get all user resumes
 router.get('/resumes', auth, async (req, res) => {
   try {
-    console.log('Chat route: Getting resumes for user:', req.user.id);
     const ragService = new RAGService();
     const resumes = await ragService.getUserResumes(req.user.id);
-    console.log('Chat route: Found resumes:', resumes);
     
     const response = {
       success: true,
       resumes
     };
-    console.log('Chat route: Sending resumes response:', response);
     
     res.json(response);
   } catch (error) {
@@ -70,8 +67,6 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    console.log('Processing uploaded resume:', req.file.filename);
-    
     // Check if user already has 3 resumes
     const ragService = new RAGService();
     const existingResumes = await ragService.getUserResumes(req.user.id);
@@ -95,8 +90,6 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
       return res.status(400).json({ error: 'Could not extract text from PDF' });
     }
 
-    console.log('Extracted text length:', resumeText.length);
-
     // Generate unique resume ID
     const resumeId = uuidv4();
 
@@ -114,14 +107,12 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
 
     // Get the created resume info
     const resumeInfo = await ragService.getResumeInfo(req.user.id, resumeId);
-    console.log('Chat route: Resume stored successfully:', resumeInfo);
 
     const response = {
       success: true,
       message: 'Resume uploaded and processed successfully',
       resume: resumeInfo
     };
-    console.log('Chat route: Sending response:', response);
     
     res.json(response);
 
@@ -172,20 +163,17 @@ router.delete('/resumes/:resumeId', auth, async (req, res) => {
     const { resumeId } = req.params;
     
     if (!resumeId) {
-      console.error('Delete attempt without resume ID');
       return res.status(400).json({ 
         success: false,
         error: 'Resume ID is required' 
       });
     }
 
-    console.log(`Starting resume deletion for user ${req.user.id}, resume ${resumeId}`);
     const ragService = new RAGService();
     
     // Check if resume exists and belongs to user
     const resumeInfo = await ragService.getResumeInfo(req.user.id, resumeId);
     if (!resumeInfo) {
-      console.error(`Resume ${resumeId} not found for user ${req.user.id}`);
       return res.status(404).json({ 
         success: false,
         error: 'Resume not found or access denied' 
@@ -214,7 +202,7 @@ router.delete('/resumes/:resumeId', auth, async (req, res) => {
       }
     }
     
-    console.log(`Resume ${resumeId} deleted successfully for user ${req.user.id}`);
+
     
     res.json({
       success: true,
@@ -251,7 +239,7 @@ router.post('/query', auth, async (req, res) => {
 
     // Handle general chats without resume ID
     if (!resumeId) {
-      console.log(`User ${req.user.id} asking general question: ${question}`);
+
       
       // Provide a general response for chats without resume
       const generalResponse = {
@@ -267,10 +255,7 @@ router.post('/query', auth, async (req, res) => {
       return res.json(generalResponse);
     }
 
-    console.log(`User ${req.user.id} asking: ${question} (Resume: ${resumeId})`);
-    if (conversationHistory.length > 0) {
-      console.log(`With conversation context: ${conversationHistory.length} messages`);
-    }
+
 
     // Query the specific resume using RAG
     const ragService = new RAGService();

@@ -17,7 +17,7 @@ const groq = new Groq({
 
 export async function generateResponse(prompt) {
     try {
-        console.log('Generating response with Groq API...');
+        //console.log('Generating response with Groq API...');
         const chatCompletion = await groq.chat.completions.create({
             messages: [
                 {

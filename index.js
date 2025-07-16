@@ -14,13 +14,10 @@ import resumeRoutes from './routes/resume.js';
 const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD', 'GEMINI_API_KEY', 'GROQ_API_KEY'];
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingVars.length > 0) {
-  console.error('⚠️ Missing required environment variables:', missingVars.join(', '));
+  console.error('Missing required environment variables:', missingVars.join(', '));
   console.error('Please check your .env file');
   process.exit(1); // Exit if critical API keys are missing
 }
-
-// Log API configuration
-console.log('Using Gemini API for embeddings and Groq API for text generation');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -39,17 +36,11 @@ app.use(express.json());
 
 // Enhanced logging middleware for debugging
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    console.log('Request Headers:', {
-        origin: req.get('origin'),
-        host: req.get('host'),
-        'user-agent': req.get('user-agent'),
-        'content-type': req.get('content-type')
-    });
+    //console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
     
-    // Log CORS preflight requests
-    if (req.method === 'OPTIONS') {
-        console.log('CORS preflight request detected');
+    // Only log CORS preflight requests in development
+    if (req.method === 'OPTIONS' && process.env.NODE_ENV === 'development') {
+        //console.log('CORS preflight request detected');
     }
     
     next();
@@ -60,7 +51,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/youtube_p
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => {
-    console.log('Connected to MongoDB for resume storage');
+    console.log('Connected to MongoDB');
 }).catch((error) => {
     console.error('MongoDB connection error:', error);
 });
@@ -69,12 +60,10 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/youtube_p
 
 // Test routes
 app.get('/', (req, res) => {
-    console.log('Root route hit');
     res.send('Server is working!');
 });
 
 app.get('/test', (req, res) => {
-    console.log('Test route hit');
     res.json({ message: 'Test endpoint working!' });
 });
 
@@ -102,14 +91,13 @@ app.use((err, req, res, next) => {
 
 // Handle 404
 app.use((req, res) => {
-    console.log('404 - Route not found:', req.path);
     res.status(404).json({ error: 'Route not found' });
 });
 
 // Start server
 const port = process.env.PORT || 3001; // Default to 3001 to match frontend expectation
 const server = app.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
+    // Server started successfully
     // console.log('\nAvailable endpoints:');
     // console.log(`1. GET  http://localhost:${port}/      -> Test server`);
     // console.log(`2. GET  http://localhost:${port}/test  -> Test endpoint`);
@@ -131,9 +119,7 @@ server.on('error', (error) => {
 
 // Handle process termination
 process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Shutting down gracefully...');
     server.close(() => {
-        console.log('Server closed.');
         process.exit(0);
     });
 });
