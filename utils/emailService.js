@@ -4,8 +4,6 @@ import { marked } from 'marked';
 
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
-    console.log('Creating email transporter with user:', process.env.EMAIL_USER);
-    
     // Gmail SMTP configuration
     return nodemailer.createTransport({
         service: 'gmail',
@@ -16,15 +14,13 @@ const getTransporter = () => {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASSWORD
         },
-        debug: true, // Enable debug logs
-        logger: true // Log to console
+        debug: process.env.NODE_ENV === 'development', // Enable debug logs only in development
+        logger: process.env.NODE_ENV === 'development' // Log to console only in development
     });
 };
 
 const sendOTPEmail = async (email, otp) => {
     try {
-        console.log('Starting email send process to:', email);
-        
         // Get a fresh transporter instance
         const transporter = getTransporter();
         
@@ -35,10 +31,8 @@ const sendOTPEmail = async (email, otp) => {
         }
         
         // Verify transporter configuration
-        console.log('Verifying transporter configuration...');
         try {
             await transporter.verify();
-            console.log('Transporter verification successful');
         } catch (verifyError) {
             console.error('Transporter verification failed:', verifyError.message);
             return false;
@@ -66,30 +60,14 @@ const sendOTPEmail = async (email, otp) => {
             text: `Your OTP for email verification is: ${otp}. This OTP will expire in 10 minutes.`
         };
 
-        console.log('Sending email...');
         const info = await transporter.sendMail(mailOptions);
-        console.log('Email sent successfully:', {
-            messageId: info.messageId,
-            response: info.response,
-            accepted: info.accepted,
-            rejected: info.rejected
-        });
-        
-        return true;    } catch (error) {
-        console.error('⚠️ EMAIL SENDING FAILED ⚠️');
-        console.error('Error details:', {
-            errorName: error.name,
-            errorMessage: error.message,
-            errorCode: error.code,
-            errorCommand: error.command,
-            responseCode: error.responseCode,
-            response: error.response
-        });
+        return true;
+    } catch (error) {
+        console.error('EMAIL SENDING FAILED:', error.message);
         
         // More specific error handling
         if (error.code === 'EAUTH') {
             console.error('Authentication failed. Check your Gmail App Password - it may be incorrect or expired.');
-            console.error('Make sure 2FA is enabled on your Google account and you\'re using an App Password, NOT your regular password.');
         } else if (error.code === 'ESOCKET') {
             console.error('Socket error. Check your network connection.');
         } else if (error.responseCode === 535) {

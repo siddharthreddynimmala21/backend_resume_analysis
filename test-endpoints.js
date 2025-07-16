@@ -16,18 +16,18 @@ async function testEndpoint(endpoint, method = 'GET', body = null) {
             options.body = JSON.stringify(body);
         }
         
-        console.log(`Testing ${method} ${endpoint}...`);
+        //console.log(`Testing ${method} ${endpoint}...`);
         const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
         const data = await response.text();
         
-        console.log(`Status: ${response.status}`);
-        console.log(`Response: ${data.substring(0, 200)}...`);
-        console.log('---');
+        //console.log(`Status: ${response.status}`);
+        //console.log(`Response: ${data.substring(0, 200)}...`);
+        //console.log('---');
         
         return response.ok;
     } catch (error) {
-        console.error(`Error testing ${endpoint}:`, error.message);
-        console.log('---');
+        //console.error(`Error testing ${endpoint}:`, error.message);
+        //console.log('---');
         return false;
     }
 }

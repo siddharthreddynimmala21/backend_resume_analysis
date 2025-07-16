@@ -31,26 +31,20 @@ const pdfExtract = new PDFExtract();
 
 // Route to execute Python script for array mean calculation (legacy route)
 router.get('/hello', (req, res) => {
-    console.log('Python hello route called with query:', req.query);
-    
     // Path to the Python script
     const pythonScriptPath = path.join(__dirname, '..', 'python', 'untitled39.py');
     
     // Get name from query parameter or use default
     const nameToSend = req.query.name || "Siddharth";
-    console.log(`Sending name to Python script: ${nameToSend}`);
     
     // Default array of numbers
     const numbersArray = req.query.numbers || "10,20,30";
-    console.log(`Sending numbers to Python script: ${numbersArray}`);
     
-    // Prepare arguments for the Python script and log them for debugging
+    // Prepare arguments for the Python script
     const pythonArgs = [pythonScriptPath, nameToSend, numbersArray, "dummy", "dummy", "dummy", process.env.GROQ_API_KEY];
-    console.log('Spawning python process with args:', pythonArgs);
 
     // Spawn a child process to run the Python script with the prepared arguments
     const pythonProcess = spawn('python', pythonArgs);
-    console.log(`Python process (PID: ${pythonProcess.pid}) started with script: ${pythonScriptPath}`);
     
     let dataString = '';
     // Collect everything from stderr so we can decide later whether it is fatal
@@ -59,7 +53,10 @@ router.get('/hello', (req, res) => {
     // Collect data from script
     pythonProcess.stdout.on('data', (data) => {
         const decoded = data.toString();
-        console.log(`[PYTHON STDOUT]: ${decoded}`);
+        // Only log in development environment
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`[PYTHON STDOUT]: ${decoded}`);
+        }
         dataString += decoded;
     });
     
@@ -78,10 +75,6 @@ router.get('/hello', (req, res) => {
     
     // When the script is done
     pythonProcess.on('close', (code) => {
-        console.log(`Python process exited with code: ${code}`);
-        console.log('STDOUT collected length:', dataString.length);
-        console.log('STDERR collected length:', errorString.length);
-
         // Non-zero exit code is always treated as an error
         if (code !== 0) {
             console.error(`Python script failed with exit code ${code}`);
