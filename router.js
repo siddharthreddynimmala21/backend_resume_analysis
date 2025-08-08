@@ -1,5 +1,6 @@
 const express = require('express');
 const { generateResponse } = require('./GeminiApi');
+import aiInterviewRouter from './routes/aiInterview.js';
 
 // Create a new router
 const router = express.Router();

@@ -1,8 +1,15 @@
+# General
 numpy
-langchain
-langchain_core
-langgraph
-groq
 python-dotenv
-langchain_community
+
+# Groq client
+groq
+
+# LangChain ecosystem (community split)
+langchain-community>=0.0.30
+langchain-openai>=0.0.5
+langgraph>=0.0.23
+
+# Optional
 openai
+langchain_groq
