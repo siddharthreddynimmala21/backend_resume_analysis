@@ -55,15 +55,20 @@ router.post('/start', upload.single('resume'), async (req, res) => {
     }
 
     // Get other fields and user
-    const { currentRole, targetRole, experience, jobDescription, userId: userIdBody, round } = req.body;
+    const { currentRole, targetRole, experience, jobDescription, jobDescriptionOption, userId: userIdBody, round } = req.body;
     const authUserId = req.user?.id; // if you use auth middleware
     const userId = authUserId || userIdBody || 'guest';
     const interviewRound = round || '1'; // Default to round 1
 
     // Generate unique session id
     const sessionId = `${userId}-${Date.now()}-${uuidv4()}`;
-    if (!currentRole || !targetRole || !experience || !jobDescription) {
-      return res.status(400).json({ error: 'Missing fields', message: 'All fields are required.' });
+    if (!currentRole || !targetRole || !experience) {
+      return res.status(400).json({ error: 'Missing fields', message: 'Current role, target role, and experience are required.' });
+    }
+
+    // Validate job description based on option
+    if (jobDescriptionOption === 'paste' && !jobDescription) {
+      return res.status(400).json({ error: 'Missing job description', message: 'Job description is required when paste option is selected.' });
     }
 
     // Call Python script with proper path
@@ -72,7 +77,8 @@ router.post('/start', upload.single('resume'), async (req, res) => {
       scriptPath,
       '--session_id', sessionId,
       '--resume_text', extractedText,
-      '--job_desc', jobDescription,
+      '--job_desc', jobDescription || '',
+      '--job_desc_option', jobDescriptionOption || 'paste',
       '--current_role', currentRole,
       '--target_role', targetRole,
       '--experience', experience,
@@ -139,32 +145,53 @@ router.post('/start', upload.single('resume'), async (req, res) => {
       try {
         const roundNumber = parseInt(interviewRound);
         const userInterview = await InterviewSession.findOne({ userId: userId });
-        if (userInterview) {
-          userInterview.interviews.push({
-            sessionId,
-            rounds: [
-              {
+
+        if (roundNumber === 1) {
+          // Round 1: Create a new interview
+          if (userInterview) {
+            userInterview.interviews.push({
+              sessionId,
+              rounds: [
+                {
+                  round: roundNumber,
+                  questions: payload.questions,
+                },
+              ],
+            });
+            await userInterview.save();
+          } else {
+            await InterviewSession.create({
+              userId,
+              interviews: [
+                {
+                  sessionId,
+                  rounds: [
+                    {
+                      round: roundNumber,
+                      questions: payload.questions,
+                    },
+                  ],
+                },
+              ],
+            });
+          }
+        } else {
+          // Rounds 2-4: Add to existing interview
+          if (userInterview) {
+            // Find the current interview (most recent one for this user)
+            const currentInterview = userInterview.interviews[userInterview.interviews.length - 1];
+            if (currentInterview) {
+              currentInterview.rounds.push({
                 round: roundNumber,
                 questions: payload.questions,
-              },
-            ],
-          });
-          await userInterview.save();
-        } else {
-          await InterviewSession.create({
-            userId,
-            interviews: [
-              {
-                sessionId,
-                rounds: [
-                  {
-                    round: roundNumber,
-                    questions: payload.questions,
-                  },
-                ],
-              },
-            ],
-          });
+              });
+              await userInterview.save();
+            } else {
+              return res.status(400).json({ error: 'No existing interview found to add round to' });
+            }
+          } else {
+            return res.status(400).json({ error: 'No user interview session found' });
+          }
         }
       } catch (dbErr) {
         console.error('Failed to save interview session:', dbErr);
