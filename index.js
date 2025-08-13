@@ -11,6 +11,7 @@ import { dirname } from 'path';
 import resumeRoutes from './routes/resume.js';
 import aiInterviewRouter from './routes/aiInterview.js';
 import aiInterviewSubmitRouter from './routes/aiInterviewSubmit.js';
+import aiInterviewValidateRouter from './routes/aiInterviewValidate.js';
 
 // Validate critical environment variables
 const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD', 'GEMINI_API_KEY', 'GROQ_API_KEY'];
@@ -81,6 +82,7 @@ app.use('/api/chat', chatRouter);
 app.use('/api/python', pythonRouter);
 app.use('/api/ai-interview', aiInterviewRouter);
 app.use('/api/ai-interview', aiInterviewSubmitRouter);
+app.use('/api/ai-interview', aiInterviewValidateRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {

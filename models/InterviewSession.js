@@ -10,9 +10,34 @@ const interviewSessionSchema = new mongoose.Schema({
       rounds: [
         {
           round: { type: Number, required: true },
-          questions: { type: [mongoose.Schema.Types.Mixed], default: [] },
-          answers: { type: mongoose.Schema.Types.Mixed, default: {} },
+          questions: { type: mongoose.Schema.Types.Mixed, default: {} },
+          answers: {
+            type: Object,
+            default: function () {
+              return {
+                mcq: {},
+                desc: {}
+              };
+            },
+            required: true
+          },
+          validation: {
+            type: Object,
+            default: function () {
+              return {
+                mcq: { score: 0, max_score: 0, details: [] },
+                descriptive: { score: 0, max_score: 0, details: [] },
+                total_score: 0,
+                max_possible_score: 0,
+                verdict: "",
+                percentage: 0
+              };
+            },
+            required: false
+          },
           createdAt: { type: Date, default: Date.now },
+          submittedAt: { type: Date, default: null },
+          validatedAt: { type: Date, default: null },
         },
       ],
     },

@@ -13,7 +13,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB file size limit
@@ -55,9 +55,11 @@ router.post('/start', upload.single('resume'), async (req, res) => {
     }
 
     // Get other fields and user
-    const { currentRole, targetRole, experience, jobDescription, userId: userIdBody } = req.body;
+    const { currentRole, targetRole, experience, jobDescription, userId: userIdBody, round } = req.body;
     const authUserId = req.user?.id; // if you use auth middleware
     const userId = authUserId || userIdBody || 'guest';
+    const interviewRound = round || '1'; // Default to round 1
+
     // Generate unique session id
     const sessionId = `${userId}-${Date.now()}-${uuidv4()}`;
     if (!currentRole || !targetRole || !experience || !jobDescription) {
@@ -73,17 +75,18 @@ router.post('/start', upload.single('resume'), async (req, res) => {
       '--job_desc', jobDescription,
       '--current_role', currentRole,
       '--target_role', targetRole,
-      '--experience', experience
+      '--experience', experience,
+      '--round', interviewRound
     ];
     const pythonProcess = spawn('python', pythonArgs);
 
     let pythonOutput = '';
     let pythonError = '';
-    
+
     pythonProcess.stdout.on('data', (data) => {
       pythonOutput += data.toString();
     });
-    
+
     pythonProcess.stderr.on('data', (data) => {
       pythonError += data.toString();
     });
@@ -108,16 +111,16 @@ router.post('/start', upload.single('resume'), async (req, res) => {
       console.log('[AIInterview] Python stdout:', output);
       console.log('[AIInterview] Python stderr:', errorOut);
       console.log('[AIInterview] Python exit code:', code);
-      
+
       if (code !== 0) {
-        return res.status(500).json({ 
-          error: 'Python script failed', 
+        return res.status(500).json({
+          error: 'Python script failed',
           details: errorOut || 'Unknown error',
           exitCode: code,
           stdout: output
         });
       }
-      console.log("Output",output)
+      console.log("Output", output)
       // Try to parse JSON coming from python
       let payload;
       try {
@@ -126,23 +129,28 @@ router.post('/start', upload.single('resume'), async (req, res) => {
         payload = { raw: output };
       }
 
+      // Debug: Log what we're about to store
+      console.log('Debug - Payload from Python:', JSON.stringify(payload, null, 2));
+      console.log('Debug - payload.questions:', JSON.stringify(payload.questions, null, 2));
+
       const decodedToken = jwt.decode(token);
       const userId = decodedToken.userId;
       // persist to DB
       try {
-        const userInterview = await InterviewSession.findOne({ userId : userId });
-        if(userInterview){
+        const roundNumber = parseInt(interviewRound);
+        const userInterview = await InterviewSession.findOne({ userId: userId });
+        if (userInterview) {
           userInterview.interviews.push({
-            sessionId,  
+            sessionId,
             rounds: [
               {
-                round: 1,
+                round: roundNumber,
                 questions: payload.questions,
               },
             ],
           });
           await userInterview.save();
-        }else{
+        } else {
           await InterviewSession.create({
             userId,
             interviews: [
@@ -150,7 +158,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
                 sessionId,
                 rounds: [
                   {
-                    round: 1,
+                    round: roundNumber,
                     questions: payload.questions,
                   },
                 ],
@@ -169,7 +177,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
           mcq_questions: clientQuestions.mcq_questions.map(({ answer, ...rest }) => rest),
         };
       }
-      res.json({ success: true, sessionId, round: 1, questions: clientQuestions });
+      res.json({ success: true, sessionId, round: parseInt(interviewRound), questions: clientQuestions });
     });
   } catch (error) {
     res.status(500).json({ error: 'Internal Server Error', message: error.message });
