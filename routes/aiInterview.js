@@ -75,6 +75,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
     const scriptPath = path.resolve(__dirname, '../python/ai_interview.py');
     const pythonArgs = [
       scriptPath,
+      '--mode', 'generate',
       '--session_id', sessionId,
       '--resume_text', extractedText,
       '--job_desc', jobDescription || '',

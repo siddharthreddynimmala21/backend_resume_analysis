@@ -119,10 +119,11 @@ router.post('/validate', async (req, res) => {
       console.warn('Warning: User answers structure is not as expected. Missing mcq or desc fields.');
     }
 
-    // Spawn Python process for validation
-    const pythonScript = path.join(__dirname, '..', 'python', 'validate_interview.py');
+    // Spawn Python process for validation using the unified script
+    const pythonScript = path.join(__dirname, '..', 'python', 'ai_interview.py');
     const pythonProcess = spawn('python', [
       pythonScript,
+      '--mode', 'validate',
       '--session_id', sessionId,
       '--user_answers', userAnswers,
       '--questions', questionsJson
@@ -192,6 +193,26 @@ router.post('/validate', async (req, res) => {
           return res.status(500).json({ error: 'Failed to update validation results' });
         }
 
+        // Check if interview is complete after this validation
+        const updatedSession = await InterviewSession.findOne({
+          'interviews.sessionId': sessionId
+        });
+
+        if (updatedSession) {
+          const interview = updatedSession.interviews.find(i => i.sessionId === sessionId);
+          if (interview) {
+            const completionStatus = checkInterviewCompletion(interview);
+
+            // If interview is complete, trigger report generation (async)
+            if (completionStatus.isComplete && !interview.reportSentAt) {
+              // Don't wait for email sending to complete the response
+              triggerReportGeneration(sessionId, updatedSession.userId).catch(error => {
+                console.error('Error triggering report generation:', error);
+              });
+            }
+          }
+        }
+
         // Return the validation report
         return res.status(200).json({
           message: 'Validation completed successfully',
@@ -210,5 +231,88 @@ router.post('/validate', async (req, res) => {
     return res.status(500).json({ error: 'Server error', details: error.message });
   }
 });
+
+/**
+ * Helper function to check if interview is complete
+ * @param {Object} interview - Interview object
+ * @returns {Object} Completion status
+ */
+function checkInterviewCompletion(interview) {
+  const rounds = interview.rounds || [];
+  const completedRounds = rounds.filter(r => r.validatedAt).length;
+  const totalRounds = 4; // Maximum possible rounds
+
+  // Check if interview failed at any point
+  const failedRounds = rounds.filter(r =>
+    r.validation &&
+    r.validation.verdict === 'Fail' &&
+    (r.round === 1 || r.round === 2) // Only technical rounds can cause failure
+  );
+
+  // Interview is complete if:
+  // 1. All 4 rounds are completed, OR
+  // 2. User failed a technical round (1 or 2), OR
+  // 3. User completed managerial round (3) - can proceed to HR regardless of score
+  const isComplete =
+    completedRounds === totalRounds || // All rounds completed
+    failedRounds.length > 0 || // Failed a technical round
+    (completedRounds >= 3 && rounds.some(r => r.round === 3 && r.validatedAt)); // Completed managerial round
+
+  const lastCompletedRound = Math.max(...rounds.filter(r => r.validatedAt).map(r => r.round), 0);
+
+  return {
+    isComplete,
+    completedRounds,
+    totalRounds,
+    lastCompletedRound,
+    failedAt: failedRounds.length > 0 ? failedRounds[0].round : null,
+    reason: isComplete ?
+      (completedRounds === totalRounds ? 'All rounds completed' :
+        failedRounds.length > 0 ? `Failed at round ${failedRounds[0].round}` :
+          'Managerial round completed') :
+      'Interview in progress'
+  };
+}
+
+/**
+ * Trigger report generation and sending (async)
+ * @param {string} sessionId - Session ID
+ * @param {string} userId - User ID
+ */
+async function triggerReportGeneration(sessionId, userId) {
+  try {
+    // Import services dynamically to avoid circular dependencies
+    const { default: reportGenerator } = await import('../services/reportGenerator.js');
+    const { default: emailService } = await import('../services/emailService.js');
+
+    // Get user email from database
+    const { default: User } = await import('../models/User.js');
+    const user = await User.findById(userId);
+
+    if (!user) {
+      console.error('User not found for automatic report generation:', userId);
+      return;
+    }
+
+    const userEmail = user.email;
+    const userName = user.email.split('@')[0]; // Use email prefix as name
+
+    // Generate report
+    const report = await reportGenerator.generateInterviewReport(userId, sessionId);
+
+    // Send report via email
+    await emailService.sendInterviewReport(userEmail, userName, report);
+
+    console.log('Interview completed - Report sent to:', userEmail, {
+      sessionId: report.sessionId,
+      overallScore: `${report.overallAnalysis.totalScore}/${report.overallAnalysis.maxPossibleScore}`,
+      overallPercentage: report.overallAnalysis.overallPercentage,
+      verdict: report.overallAnalysis.overallVerdict
+    });
+
+  } catch (error) {
+    console.error('Error in automatic report generation:', error);
+  }
+}
 
 export default router;

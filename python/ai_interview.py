@@ -1,7 +1,8 @@
 import argparse
 import json
 import os
-from typing import List
+import sys
+from typing import List, Dict, Any, Tuple
 
 from langgraph.graph import StateGraph
 from langchain_groq import ChatGroq
@@ -14,6 +15,14 @@ class InterviewState(TypedDict, total=False):
     resume_text: str
     job_desc: str
     questions: List[str]
+
+class ValidationState(TypedDict, total=False):
+    session_id: str
+    user_answers: Dict[str, Any]
+    questions: Dict[str, Any]
+    mcq_results: Tuple[int, int, List[Dict]]
+    desc_results: Tuple[int, int, List[Dict]]
+    validation_report: Dict[str, Any]
 
 
 def build_graph(round_type: str = "technical_round1") -> StateGraph:
@@ -304,6 +313,321 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
     sg.set_finish_point("generate")
     return sg.compile()
 
+def build_validation_graph() -> StateGraph:
+    """Return a compiled LangGraph that validates interview answers."""
+    # Note: API key check is done in descriptive validation where it's actually needed
+    llm = None
+    if "GROQ_API_KEY" in os.environ:
+        llm = ChatGroq(temperature=0.2, model_name=os.getenv("GROQ_MODEL", "llama3-70b-8192"), max_tokens=2048)
+
+    def preprocess_validation_data(state: dict):
+        """Preprocess and validate input data structure."""
+        user_answers = state.get("user_answers", {})
+        questions = state.get("questions", {})
+        
+        # Debug logging
+        print(f"DEBUG: Raw user_answers: {json.dumps(user_answers)}", file=sys.stderr)
+        print(f"DEBUG: Raw questions: {json.dumps(questions)}", file=sys.stderr)
+        
+        # Ensure user_answers has the expected structure
+        if not isinstance(user_answers, dict):
+            print(f"WARNING: user_answers is not a dictionary: {type(user_answers)}", file=sys.stderr)
+            user_answers = {}
+            
+        # Ensure mcq and desc fields exist
+        if 'mcq' not in user_answers:
+            print("WARNING: 'mcq' field missing in user_answers, adding empty dict", file=sys.stderr)
+            user_answers['mcq'] = {}
+            
+        if 'desc' not in user_answers:
+            print("WARNING: 'desc' field missing in user_answers, adding empty dict", file=sys.stderr)
+            user_answers['desc'] = {}
+            
+        # Handle case where user_answers is a flat structure without mcq/desc nesting
+        # This happens when the frontend sends answers directly without proper structure
+        has_numeric_keys = any(key.isdigit() for key in user_answers.keys())
+        if has_numeric_keys and not user_answers.get('mcq') and not user_answers.get('desc'):
+            print("WARNING: user_answers appears to be flat structure, restructuring", file=sys.stderr)
+            # Try to determine if keys are for MCQ or descriptive based on values
+            mcq_answers = {}
+            desc_answers = {}
+            
+            for key, value in user_answers.items():
+                if key.isdigit():
+                    # If value starts with a letter followed by period, it's likely an MCQ answer
+                    if isinstance(value, str) and len(value) > 1 and value[0].isalpha() and value[1:].startswith('. '):
+                        mcq_answers[key] = value
+                    else:
+                        desc_answers[key] = value
+            
+            user_answers = {
+                'mcq': mcq_answers,
+                'desc': desc_answers
+            }
+            print(f"DEBUG: Restructured user_answers: {json.dumps(user_answers)}", file=sys.stderr)
+        
+        # Check if answers and questions are empty
+        if not user_answers.get('mcq') and not user_answers.get('desc'):
+            print("WARNING: Both MCQ and descriptive answers are empty", file=sys.stderr)
+        
+        if not questions.get('mcq_questions') and not questions.get('desc_questions'):
+            print("WARNING: Both MCQ and descriptive questions are empty", file=sys.stderr)
+            
+        # Ensure questions has the expected structure
+        if not isinstance(questions, dict):
+            print(f"WARNING: questions is not a dictionary: {type(questions)}", file=sys.stderr)
+            questions = {}
+            
+        # Ensure mcq_questions and desc_questions fields exist
+        if 'mcq_questions' not in questions:
+            print("WARNING: 'mcq_questions' field missing in questions, adding empty list", file=sys.stderr)
+            questions['mcq_questions'] = []
+            
+        if 'desc_questions' not in questions:
+            print("WARNING: 'desc_questions' field missing in questions, adding empty list", file=sys.stderr)
+            questions['desc_questions'] = []
+        
+        # Debug logging after preprocessing
+        print(f"DEBUG: Processed user_answers: {json.dumps(user_answers)}", file=sys.stderr)
+        print(f"DEBUG: Processed questions: {json.dumps(questions)}", file=sys.stderr)
+        print(f"DEBUG: MCQ questions count: {len(questions.get('mcq_questions', []))}", file=sys.stderr)
+        print(f"DEBUG: Descriptive questions count: {len(questions.get('desc_questions', []))}", file=sys.stderr)
+        print(f"DEBUG: User MCQ answers count: {len(user_answers.get('mcq', {}))}", file=sys.stderr)
+        print(f"DEBUG: User descriptive answers count: {len(user_answers.get('desc', {}))}", file=sys.stderr)
+        
+        # Update state with processed data
+        state["user_answers"] = user_answers
+        state["questions"] = questions
+        return state
+
+    def validate_mcq_answers(state: dict):
+        """Validate MCQ answers and calculate score."""
+        user_answers = state.get("user_answers", {}).get("mcq", {})
+        correct_answers = state.get("questions", {}).get("mcq_questions", [])
+        
+        score = 0
+        max_score = len(correct_answers)
+        detailed_results = []
+        
+        # Debug logging
+        print(f"DEBUG: MCQ validation - User answers: {json.dumps(user_answers)}", file=sys.stderr)
+        print(f"DEBUG: MCQ validation - Correct answers count: {len(correct_answers)}", file=sys.stderr)
+        if len(correct_answers) > 0:
+            print(f"DEBUG: MCQ validation - First correct answer: {json.dumps(correct_answers[0])}", file=sys.stderr)
+        else:
+            print("DEBUG: MCQ validation - No correct answers provided", file=sys.stderr)
+        
+        for idx, question_data in enumerate(correct_answers):
+            question = question_data["question"]
+            correct_answer = question_data["answer"]
+            options = question_data["options"]
+            
+            # Convert string index to actual answer option
+            user_answer = user_answers.get(str(idx))
+            
+            is_correct = False
+            if user_answer:
+                # Extract the letter prefix if it exists (e.g., "A. Option" -> "A")
+                correct_letter = correct_answer.split(".")[0] if "." in correct_answer else correct_answer
+                
+                # Check if user's answer matches the correct answer
+                if user_answer.startswith(correct_letter) or user_answer == correct_letter:
+                    score += 1
+                    is_correct = True
+            
+            detailed_results.append({
+                "question": question,
+                "user_answer": user_answer,
+                "correct_answer": correct_answer,
+                "is_correct": is_correct,
+                "options": options
+            })
+        
+        state["mcq_results"] = (score, max_score, detailed_results)
+
+        return state
+
+    def validate_descriptive_answers(state: dict):
+        """Validate descriptive answers using Groq LLM."""
+        user_answers = state.get("user_answers", {}).get("desc", {})
+        questions = state.get("questions", {}).get("desc_questions", [])
+        
+        max_score = len(questions) * 3  # Each question is worth 3 points
+        detailed_results = []
+        total_score = 0
+        
+        # Debug logging
+        print(f"DEBUG: Descriptive validation - User answers: {json.dumps(user_answers)}", file=sys.stderr)
+        print(f"DEBUG: Descriptive validation - Questions count: {len(questions)}", file=sys.stderr)
+        if len(questions) > 0:
+            print(f"DEBUG: Descriptive validation - First question: {questions[0]}", file=sys.stderr)
+        else:
+            print("DEBUG: Descriptive validation - No questions provided", file=sys.stderr)
+        
+        # Check if API key is available for LLM evaluation
+        if not llm or "GROQ_API_KEY" not in os.environ:
+            print("WARNING: GROQ_API_KEY not available, skipping descriptive validation", file=sys.stderr)
+            for idx, question in enumerate(questions):
+                user_answer = user_answers.get(str(idx), "")
+                detailed_results.append({
+                    "question": question,
+                    "user_answer": user_answer,
+                    "score": 0,
+                    "max_score": 3,
+                    "feedback": "API key not available for evaluation."
+                })
+            state["desc_results"] = (0, max_score, detailed_results)
+            return state
+        
+        for idx, question in enumerate(questions):
+            user_answer = user_answers.get(str(idx), "")
+            
+            if not user_answer.strip():
+                # No answer provided
+                detailed_results.append({
+                    "question": question,
+                    "user_answer": "",
+                    "score": 0,
+                    "max_score": 3,
+                    "feedback": "No answer provided."
+                })
+                continue
+            
+            # Create prompt for evaluation
+            prompt = ChatPromptTemplate.from_template(
+                """
+                You are an expert technical interviewer providing feedback directly to a candidate about their answer.
+                
+                Question: {question}
+                
+                Candidate's Answer: {answer}
+                
+                Evaluate the answer on a scale of 0-3 points where:
+                - 0 points: Completely incorrect or irrelevant
+                - 1 point: Partially correct but missing key concepts
+                - 2 points: Mostly correct with minor omissions
+                - 3 points: Completely correct and comprehensive
+                
+                IMPORTANT: Write your feedback in second person, addressing the candidate directly (use "Your answer..." instead of "The candidate's answer...").
+                Be constructive, specific, and helpful in your feedback.
+                
+                Provide your evaluation in JSON format only with the following structure:
+                {{"score": <score>, "feedback": "<detailed feedback explaining the score, written in second person addressing the candidate directly>"}}            
+                """
+            )
+            
+            prompt_text = prompt.format(question=question, answer=user_answer)
+            result = llm.predict(prompt_text)
+            
+            try:
+                # Extract JSON from the result if needed
+                if "```" in result:
+                    result = result.split("```")[1].strip()
+                    if result.startswith("json"):
+                        result = result[4:].strip()
+                
+                evaluation = json.loads(result)
+                score = int(evaluation.get("score", 0))
+                feedback = evaluation.get("feedback", "No feedback provided.")
+                
+                # Ensure score is within valid range
+                score = max(0, min(score, 3))
+                total_score += score
+                
+                detailed_results.append({
+                    "question": question,
+                    "user_answer": user_answer,
+                    "score": score,
+                    "max_score": 3,
+                    "feedback": feedback
+                })
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                # Fallback if parsing fails
+                detailed_results.append({
+                    "question": question,
+                    "user_answer": user_answer,
+                    "score": 0,
+                    "max_score": 3,
+                    "feedback": f"Error evaluating answer: {str(e)}",
+                    "raw_response": result
+                })
+        
+        state["desc_results"] = (total_score, max_score, detailed_results)
+
+        return state
+
+    def generate_validation_report(state: dict):
+        """Generate a comprehensive validation report with scores and verdict."""
+
+        
+        mcq_results = state.get("mcq_results", (0, 0, []))
+        desc_results = state.get("desc_results", (0, 0, []))
+        
+        print(f"DEBUG: MCQ results in report generation: {mcq_results}", file=sys.stderr)
+        print(f"DEBUG: Desc results in report generation: {desc_results}", file=sys.stderr)
+        
+        mcq_score, mcq_max, mcq_details = mcq_results
+        desc_score, desc_max, desc_details = desc_results
+        
+        total_score = mcq_score + desc_score
+        max_possible_score = mcq_max + desc_max
+        
+
+        
+        # Determine verdict
+        # If there are no questions, use "No Questions Available"
+        # Otherwise, use a percentage-based approach: Pass if >= 60%, otherwise Fail
+        if max_possible_score == 0:
+            verdict = "No Questions Available"
+        else:
+            percentage_score = (total_score / max_possible_score * 100)
+            verdict = "Pass" if percentage_score >= 60 else "Fail"
+        
+        # Calculate percentage safely
+        percentage = 0
+        if max_possible_score > 0:
+            percentage = round((total_score / max_possible_score * 100), 2)
+        
+        # Adjust verdict for edge case where there are no questions
+        if max_possible_score == 0:
+            verdict = "No Questions Available"
+        
+        report = {
+            "mcq": {
+                "score": mcq_score,
+                "max_score": mcq_max,
+                "details": mcq_details
+            },
+            "descriptive": {
+                "score": desc_score,
+                "max_score": desc_max,
+                "details": desc_details
+            },
+            "total_score": total_score,
+            "max_possible_score": max_possible_score,
+            "verdict": verdict,
+            "percentage": percentage
+        }
+        
+        state["validation_report"] = report
+        return state
+
+    # Build the validation graph
+    sg = StateGraph(ValidationState)
+    sg.add_node("preprocess", preprocess_validation_data)
+    sg.add_node("validate_mcq", validate_mcq_answers)
+    sg.add_node("validate_descriptive", validate_descriptive_answers)
+    sg.add_node("generate_report", generate_validation_report)
+    
+    sg.set_entry_point("preprocess")
+    sg.add_edge("preprocess", "validate_mcq")
+    sg.add_edge("validate_mcq", "validate_descriptive")
+    sg.add_edge("validate_descriptive", "generate_report")
+    sg.set_finish_point("generate_report")
+    
+    return sg.compile()
+
 def generate_job_description(target_role: str, experience: str, current_role: str) -> str:
     """Generate a job description based on target role and experience level."""
     # Ensure the API key is set
@@ -379,64 +703,122 @@ We offer competitive compensation, comprehensive benefits, and opportunities for
         """.strip()
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate interview questions using LangGraph")
+    parser = argparse.ArgumentParser(description="Generate interview questions or validate answers using LangGraph")
+    parser.add_argument("--mode", choices=["generate", "validate"], default="generate", help="Mode: generate questions or validate answers")
     parser.add_argument("--session_id", required=True)
-    parser.add_argument("--resume_text", required=True)
+    
+    # Arguments for question generation
+    parser.add_argument("--resume_text", help="Resume text for question generation")
     parser.add_argument("--job_desc", default="", help="Job description (empty if generating)")
     parser.add_argument("--job_desc_option", default="paste", help="Job description option: paste or generate")
-    parser.add_argument("--current_role", required=True)
-    parser.add_argument("--target_role", required=True)
-    parser.add_argument("--experience", required=True)
+    parser.add_argument("--current_role", help="Current role for question generation")
+    parser.add_argument("--target_role", help="Target role for question generation")
+    parser.add_argument("--experience", help="Years of experience for question generation")
     parser.add_argument("--round", default="1", help="Interview round number")
+    
+    # Arguments for validation
+    parser.add_argument("--user_answers", help="JSON string of user answers for validation")
+    parser.add_argument("--questions", help="JSON string of questions with correct answers for validation")
+    
     args = parser.parse_args()
 
-    # Determine round type
-    round_num = int(args.round)
-    if round_num == 1:
-        round_type = "technical_round1"
-    elif round_num == 2:
-        round_type = "technical_round2"
-    elif round_num == 3:
-        round_type = "managerial_round"
-    elif round_num == 4:
-        round_type = "hr_round"
-    else:
-        round_type = "technical_round1"  # fallback
-    
-    # Handle job description generation if needed
-    job_desc = args.job_desc
-    if args.job_desc_option == "generate" or not job_desc.strip():
-        try:
-            job_desc = generate_job_description(
-                target_role=args.target_role,
-                experience=args.experience,
-                current_role=args.current_role
-            )
-        except Exception as e:
-            print(json.dumps({"error": f"Failed to generate job description: {str(e)}"}))
-            raise
-    
-    graph = build_graph(round_type)
-    init_state = {
-        "resume_text": args.resume_text,
-        "job_desc": job_desc,
-        "current_role": args.current_role,
-        "target_role": args.target_role,
-        "experience": args.experience,
-    }
+    if args.mode == "generate":
+        # Question generation mode
+        if not all([args.resume_text, args.current_role, args.target_role, args.experience]):
+            print(json.dumps({"error": "Missing required arguments for question generation"}))
+            return
 
-    try:
-        final_state = graph.invoke(init_state)
-        questions: List[str] = final_state.get("questions", [])
-        payload = {
-            "session_id": args.session_id,
-            "round": round_type,
-            "questions": questions,
+        # Determine round type
+        round_num = int(args.round)
+        if round_num == 1:
+            round_type = "technical_round1"
+        elif round_num == 2:
+            round_type = "technical_round2"
+        elif round_num == 3:
+            round_type = "managerial_round"
+        elif round_num == 4:
+            round_type = "hr_round"
+        else:
+            round_type = "technical_round1"  # fallback
+        
+        # Handle job description generation if needed
+        job_desc = args.job_desc
+        if args.job_desc_option == "generate" or not job_desc.strip():
+            try:
+                job_desc = generate_job_description(
+                    target_role=args.target_role,
+                    experience=args.experience,
+                    current_role=args.current_role
+                )
+            except Exception as e:
+                print(json.dumps({"error": f"Failed to generate job description: {str(e)}"}))
+                raise
+        
+        graph = build_graph(round_type)
+        init_state = {
+            "resume_text": args.resume_text,
+            "job_desc": job_desc,
+            "current_role": args.current_role,
+            "target_role": args.target_role,
+            "experience": args.experience,
         }
-        print(json.dumps(payload))
-    except Exception as e:
-        print(json.dumps({"error": str(e)}))
-        raise
+
+        try:
+            final_state = graph.invoke(init_state)
+            questions: List[str] = final_state.get("questions", [])
+            payload = {
+                "session_id": args.session_id,
+                "round": round_type,
+                "questions": questions,
+            }
+            print(json.dumps(payload))
+        except Exception as e:
+            print(json.dumps({"error": str(e)}))
+            raise
+
+    elif args.mode == "validate":
+        # Validation mode
+        if not all([args.user_answers, args.questions]):
+            print(json.dumps({"error": "Missing required arguments for validation"}))
+            return
+
+        try:
+            # Parse input JSON
+            user_answers = json.loads(args.user_answers)
+            questions = json.loads(args.questions)
+            
+            # Basic debug logging before passing to graph
+            print(f"DEBUG: Raw input user_answers: {json.dumps(user_answers)}", file=sys.stderr)
+            print(f"DEBUG: Raw input questions: {json.dumps(questions)}", file=sys.stderr)
+            print(f"DEBUG: User answers type: {type(user_answers)}", file=sys.stderr)
+            print(f"DEBUG: Questions type: {type(questions)}", file=sys.stderr)
+            print(f"DEBUG: Questions keys: {list(questions.keys()) if isinstance(questions, dict) else 'Not a dict'}", file=sys.stderr)
+            print(f"DEBUG: User answers keys: {list(user_answers.keys()) if isinstance(user_answers, dict) else 'Not a dict'}", file=sys.stderr)
+
+            # Build validation graph and run validation
+            validation_graph = build_validation_graph()
+            init_state = {
+                "session_id": args.session_id,
+                "user_answers": user_answers,
+                "questions": questions
+            }
+
+            final_state = validation_graph.invoke(init_state)
+            
+            # Output the validation report
+            output = {
+                "session_id": args.session_id,
+                "validation_report": final_state.get("validation_report", {})
+            }
+            print(json.dumps(output))
+            
+        except Exception as e:
+            error_output = {
+                "error": str(e),
+                "session_id": args.session_id
+            }
+            print(json.dumps(error_output))
+            raise
 
 if __name__ == "__main__":
     main()
