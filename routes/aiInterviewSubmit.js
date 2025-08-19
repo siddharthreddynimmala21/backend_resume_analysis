@@ -10,10 +10,11 @@ router.post('/submit', async (req, res) => {
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     const { userId } = jwt.decode(token);
     const { sessionId, round, answers } = req.body;
+    const roundNum = parseInt(round);
     
     // Validate required fields
-    if (!sessionId || typeof round !== 'number') {
-      return res.status(400).json({ error: 'sessionId and round are required' });
+    if (!sessionId || Number.isNaN(roundNum)) {
+      return res.status(400).json({ error: 'sessionId and round are required', details: { sessionId, round } });
     }
     
     // Validate answers structure
@@ -33,10 +34,10 @@ router.post('/submit', async (req, res) => {
     const sessionExists = await InterviewSession.findOne({ 
       userId, 
       'interviews.sessionId': sessionId,
-      'interviews.rounds.round': round
+      'interviews.rounds.round': roundNum
     });
     
-    if (!sessionExists) return res.status(404).json({ error: 'Session or round not found' });
+    if (!sessionExists) return res.status(404).json({ error: 'Session or round not found', details: { sessionId, round: roundNum } });
     
     // Debug the incoming answers
     console.log('Received answers:', JSON.stringify(answers));
@@ -47,7 +48,7 @@ router.post('/submit', async (req, res) => {
       { 
         userId, 
         'interviews.sessionId': sessionId,
-        'interviews.rounds.round': round 
+        'interviews.rounds.round': roundNum 
       },
       { 
         $set: { 
@@ -59,7 +60,7 @@ router.post('/submit', async (req, res) => {
       { 
         arrayFilters: [
           { 'i.sessionId': sessionId },
-          { 'r.round': round }
+          { 'r.round': roundNum }
         ]
       }
     );

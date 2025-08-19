@@ -55,13 +55,15 @@ router.post('/start', upload.single('resume'), async (req, res) => {
     }
 
     // Get other fields and user
-    const { currentRole, targetRole, experience, jobDescription, jobDescriptionOption, userId: userIdBody, round } = req.body;
+    const { currentRole, targetRole, experience, jobDescription, jobDescriptionOption, userId: userIdBody, round, sessionId: sessionIdBody } = req.body;
     const authUserId = req.user?.id; // if you use auth middleware
     const userId = authUserId || userIdBody || 'guest';
     const interviewRound = round || '1'; // Default to round 1
 
-    // Generate unique session id
-    const sessionId = `${userId}-${Date.now()}-${uuidv4()}`;
+    // Resolve sessionId: for round 1 generate a new one; for subsequent rounds reuse provided sessionId
+    const isFirstRound = String(interviewRound) === '1';
+    const sessionId = isFirstRound ? `${userId}-${Date.now()}-${uuidv4()}` : (sessionIdBody || `${userId}-${Date.now()}-${uuidv4()}`);
+
     if (!currentRole || !targetRole || !experience) {
       return res.status(400).json({ error: 'Missing fields', message: 'Current role, target role, and experience are required.' });
     }
