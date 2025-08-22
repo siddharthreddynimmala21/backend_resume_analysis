@@ -2,6 +2,27 @@ import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
 import { marked } from 'marked';
 
+// Apply fixed typography and black color to markdown HTML for emails
+const styleMarkdownHtml = (html) => {
+    if (!html) return html;
+    // Ensure bullets render with spacing
+    html = html
+        .replaceAll('<ul>', '<ul style="list-style-type:disc; list-style-position:outside; padding-left:20px; margin:8px 0; color:#000;">')
+        .replaceAll('<ol>', '<ol style="list-style-type:decimal; list-style-position:outside; padding-left:20px; margin:8px 0; color:#000;">')
+        .replaceAll('<li>', '<li style="font-size:14px; line-height:1.7; margin:6px 0; color:#000;">');
+
+    // Headings and paragraphs
+    html = html
+        .replaceAll('<h1>', '<h1 style="font-size:22px; font-weight:700; margin:14px 0 10px; color:#000;">')
+        .replaceAll('<h2>', '<h2 style="font-size:18px; font-weight:700; margin:12px 0 8px; color:#000;">')
+        .replaceAll('<h3>', '<h3 style="font-size:16px; font-weight:700; margin:10px 0 6px; color:#000;">')
+        .replaceAll('<p>', '<p style="font-size:14px; line-height:1.7; margin:8px 0; color:#000;">')
+        .replaceAll('<strong>', '<strong style="color:#000;">')
+        .replaceAll('<em>', '<em style="color:#000;">');
+
+    return html;
+};
+
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
     // Gmail SMTP configuration
@@ -17,6 +38,46 @@ const getTransporter = () => {
         debug: process.env.NODE_ENV === 'development', // Enable debug logs only in development
         logger: process.env.NODE_ENV === 'development' // Log to console only in development
     });
+};
+
+/**
+ * Send a raw PDF Buffer as an email attachment.
+ * @param {string} email Recipient
+ * @param {string} subject Subject line
+ * @param {Buffer} pdfBuffer PDF content
+ * @param {string} filename Attachment filename
+ * @param {string} htmlBody Optional HTML body; if omitted a default is used
+ */
+const sendPDFBufferEmail = async (email, subject, pdfBuffer, filename = 'report.pdf', htmlBody = '') => {
+    try {
+        const transporter = getTransporter();
+        await transporter.verify();
+
+        const mailOptions = {
+            from: {
+                name: 'Resume AI',
+                address: process.env.EMAIL_USER
+            },
+            to: email,
+            subject,
+            text: 'Your report is attached as a PDF.',
+            html: htmlBody || '<p>Your report is attached as a PDF.</p>',
+            attachments: [
+                {
+                    filename,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ]
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log('PDF buffer email sent:', { messageId: info.messageId });
+        return true;
+    } catch (error) {
+        console.error('Failed to send PDF buffer email:', error);
+        return false;
+    }
 };
 
 const sendOTPEmail = async (email, otp) => {
@@ -47,14 +108,14 @@ const sendOTPEmail = async (email, otp) => {
             to: email,
             subject: 'Email Verification OTP',
             html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h1 style="color: #2563eb;">Email Verification</h1>
-                    <p>Your OTP for email verification is:</p>
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color:#000;">
+                    <h1 style="color: #000;">Email Verification</h1>
+                    <p style="color:#000;">Your OTP for email verification is:</p>
                     <div style="background-color: #f3f4f6; padding: 20px; text-align: center; margin: 20px 0;">
-                        <h2 style="color: #1f2937; margin: 0; font-size: 24px;">${otp}</h2>
+                        <h2 style="color: #000; margin: 0; font-size: 24px;">${otp}</h2>
                     </div>
-                    <p>This OTP will expire in 10 minutes.</p>
-                    <p style="color: #6b7280; font-size: 14px;">If you didn't request this verification, please ignore this email.</p>
+                    <p style="color:#000;">This OTP will expire in 10 minutes.</p>
+                    <p style="color: #000; font-size: 14px;">If you didn't request this verification, please ignore this email.</p>
                 </div>
             `,
             text: `Your OTP for email verification is: ${otp}. This OTP will expire in 10 minutes.`
@@ -299,18 +360,20 @@ const sendMarkdownReportEmail = async (email, subject, markdownContent) => {
         
         // Create greeting with user's name
         const greetingHtml = `
-        <div style="margin-bottom: 20px;">
-            <p>Hi ${capitalizedName},</p>
-            <p>Greetings from ResumeRefiner! 👋</p>
-            <p>Thank you for using our AI-powered resume optimization tool. We appreciate your patience while we thoroughly analyzed your resume in alignment with your target role.</p>
-            <p>We're excited to share your Final Career Analysis Report below. This detailed report provides valuable insights into your strengths, skill alignment, and suggestions to help you move closer to your career goals.</p>
-            <p>Please find your report below:</p>
+        <div style="margin-bottom: 20px; color:#000;">
+            <p style="color:#000;">Hi ${capitalizedName},</p>
+            <p style="color:#000;">Greetings from ResumeRefiner! 👋</p>
+            <p style="color:#000;">Thank you for using our AI-powered resume optimization tool. We appreciate your patience while we thoroughly analyzed your resume in alignment with your target role.</p>
+            <p style="color:#000;">We're excited to share your Final Career Analysis Report below. This detailed report provides valuable insights into your strengths, skill alignment, and suggestions to help you move closer to your career goals.</p>
+            <p style="color:#000;">Please find your report below:</p>
         </div>
         `;
         
-        // Convert markdown to HTML and prepend intro line and greeting
-        const introHtml = '<p><strong>Following is the report:</strong></p>';
-        const htmlContent = greetingHtml + introHtml + marked.parse(markdownContent);
+        // Convert markdown to HTML, then apply fixed styles and prepend intro line and greeting
+        const introHtml = '<p style="font-size:14px; line-height:1.7; margin:8px 0; color:#000;"><strong style="color:#000;">Following is the report:</strong></p>';
+        const rawMdHtml = marked.parse(markdownContent);
+        const styledMdHtml = styleMarkdownHtml(rawMdHtml);
+        const htmlContent = `<div style="color:#000;">${greetingHtml}${introHtml}${styledMdHtml}</div>`;
 
         const mailOptions = {
             from: {
@@ -339,5 +402,6 @@ const sendMarkdownReportEmail = async (email, subject, markdownContent) => {
 export {
     sendOTPEmail,
     sendPDFReportEmail,
-    sendMarkdownReportEmail
+    sendMarkdownReportEmail,
+    sendPDFBufferEmail
 };

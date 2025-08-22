@@ -143,14 +143,18 @@ class ResumeAnalyzer:
             ("user", """
             Compare the user's **current role** and **target role**, and generate a **Role Relevance Report**.
 
+            Use BOTH the full resume text and job description to ground your analysis.
+
             ## Report Format (Markdown):
             - **Role Relevance Score**: (score out of 100)
-            - **Strengths**: (how roles align)
-            - **Suggestions**: (gaps and recommendations to bridge the roles)
+            - **Strengths**: (how roles align, cite evidence from resume/JD)
+            - **Suggestions**: (gaps and recommendations to bridge the roles, cite evidence)
 
             ### Data:
             **Current Role**: {current_role}  
-            **Target Role**: {target_role}
+            **Target Role**: {target_role}  
+            **Resume Text**: {resume_text}  
+            **Job Description**: {jd}
             """)
         ])
 
@@ -229,7 +233,9 @@ class ResumeAnalyzer:
         def role_relevance_node(state):
             response = role_relevance_chain.invoke({
                 "current_role": state["current_role"],
-                "target_role": state["target_role"]
+                "target_role": state["target_role"],
+                "resume_text": state.get("resume_text", ""),
+                "jd": state.get("job_description", "")
             })
             return {"role_relevance_report": response}
 

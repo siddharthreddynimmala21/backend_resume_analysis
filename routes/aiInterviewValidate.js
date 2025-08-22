@@ -2,6 +2,8 @@ import express from 'express';
 import { spawn } from 'child_process';
 import path from 'path';
 import InterviewSession from '../models/InterviewSession.js';
+import User from '../models/User.js';
+import { sendPDFReportEmail, sendMarkdownReportEmail } from '../utils/emailService.js';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
 
@@ -16,7 +18,7 @@ const __dirname = path.dirname(__filename);
  */
 router.post('/validate', async (req, res) => {
   try {
-    const { sessionId, round } = req.body;
+    const { sessionId, round, sendEmail } = req.body;
 
     if (!sessionId || round === undefined) {
       return res.status(400).json({ error: 'Session ID and round are required' });
@@ -190,6 +192,79 @@ router.post('/validate', async (req, res) => {
 
         if (updateResult.modifiedCount === 0) {
           return res.status(500).json({ error: 'Failed to update validation results' });
+        }
+
+        // Email the validation report PDF to the user (legacy, markdown->PDF)
+        // Only send if not explicitly disabled by client
+        if (sendEmail !== false) try {
+          // Re-fetch session to access userId and round data
+          const freshSession = await InterviewSession.findOne({ 'interviews.sessionId': sessionId });
+          let userEmail = null;
+          if (freshSession && freshSession.userId) {
+            const user = await User.findById(freshSession.userId);
+            userEmail = user?.email || null;
+          }
+
+          if (userEmail) {
+            // Build a concise markdown report from validation_result
+            const v = validationResult.validation_report || {};
+            const lines = [];
+            lines.push(`# AI Interview Report`);
+            lines.push('');
+            lines.push(`- Session ID: ${sessionId}`);
+            lines.push(`- Round: ${round}`);
+            lines.push('');
+            if (typeof v.total_score !== 'undefined' || typeof v.max_possible_score !== 'undefined') {
+              lines.push(`## Overall`);
+              if (typeof v.percentage !== 'undefined') lines.push(`- Percentage: ${v.percentage}%`);
+              if (typeof v.total_score !== 'undefined' && typeof v.max_possible_score !== 'undefined') {
+                lines.push(`- Score: ${v.total_score} / ${v.max_possible_score}`);
+              }
+              if (v.verdict) lines.push(`- Verdict: ${v.verdict}`);
+              lines.push('');
+            }
+            if (v.mcq) {
+              lines.push(`## MCQ Section`);
+              if (typeof v.mcq.score !== 'undefined' && typeof v.mcq.max_score !== 'undefined') {
+                lines.push(`- Score: ${v.mcq.score} / ${v.mcq.max_score}`);
+              }
+              if (Array.isArray(v.mcq.details) && v.mcq.details.length) {
+                lines.push('- Details:');
+                v.mcq.details.forEach((d, i) => {
+                  lines.push(`  - Q${i + 1}: ${typeof d === 'string' ? d : JSON.stringify(d)}`);
+                });
+              }
+              lines.push('');
+            }
+            if (v.descriptive) {
+              lines.push(`## Descriptive Section`);
+              if (typeof v.descriptive.score !== 'undefined' && typeof v.descriptive.max_score !== 'undefined') {
+                lines.push(`- Score: ${v.descriptive.score} / ${v.descriptive.max_score}`);
+              }
+              if (Array.isArray(v.descriptive.details) && v.descriptive.details.length) {
+                lines.push('- Details:');
+                v.descriptive.details.forEach((d, i) => {
+                  lines.push(`  - Q${i + 1}: ${typeof d === 'string' ? d : JSON.stringify(d)}`);
+                });
+              }
+              lines.push('');
+            }
+            const markdown = lines.join('\n');
+
+            const subject = 'Your AI Interview Report (PDF)';
+            const sent = await sendPDFReportEmail(userEmail, subject, markdown);
+            if (!sent) {
+              console.error('Report PDF email failed to send to', userEmail, '- attempting Markdown email fallback');
+              const fallback = await sendMarkdownReportEmail(userEmail, 'Your AI Interview Report', markdown);
+              if (!fallback) {
+                console.error('Markdown fallback email also failed for', userEmail);
+              }
+            }
+          } else {
+            console.warn('User email not found for session', sessionId);
+          }
+        } catch (mailErr) {
+          console.error('Error while sending interview report email:', mailErr);
         }
 
         // Return the validation report

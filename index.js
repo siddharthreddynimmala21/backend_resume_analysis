@@ -12,6 +12,7 @@ import resumeRoutes from './routes/resume.js';
 import aiInterviewRouter from './routes/aiInterview.js';
 import aiInterviewSubmitRouter from './routes/aiInterviewSubmit.js';
 import aiInterviewValidateRouter from './routes/aiInterviewValidate.js';
+import reportRouter from './routes/report.js';
 
 // Validate critical environment variables
 const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD', 'GEMINI_API_KEY', 'GROQ_API_KEY'];
@@ -35,7 +36,7 @@ app.use(cors({
     credentials: false // Set to false to avoid CORS issues
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 // Enhanced logging middleware for debugging
 app.use((req, res, next) => {
@@ -83,6 +84,7 @@ app.use('/api/python', pythonRouter);
 app.use('/api/ai-interview', aiInterviewRouter);
 app.use('/api/ai-interview', aiInterviewSubmitRouter);
 app.use('/api/ai-interview', aiInterviewValidateRouter);
+app.use('/api/report', reportRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {

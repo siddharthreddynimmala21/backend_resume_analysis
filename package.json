@@ -28,11 +28,12 @@
     "marked": "^12.0.2",
     "mongoose": "^8.15.2",
     "multer": "^2.0.1",
-    "nodemailer": "^7.0.3",
+    "nodemailer": "^7.0.5",
     "openai": "^4.28.0",
     "pdf-parse": "^1.1.1",
     "pdf.js-extract": "^0.2.1",
     "pdfkit": "^0.15.2",
+    "puppeteer": "^24.16.2",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
