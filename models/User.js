@@ -34,6 +34,17 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Admin access flag
+  isAdmin: {
+    type: Boolean,
+    default: false,
+  },
+  // Counter for number of resumes uploaded via chat/resume feature
+  resumeUploadCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

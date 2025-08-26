@@ -103,7 +103,7 @@ router.post('/setup-password', async (req, res) => {
         user.password = password;
         await user.save();
 
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin === true }, process.env.JWT_SECRET, { expiresIn: '24h' });
         res.status(200).json({ 
             message: 'Password set successfully',
             token 
@@ -129,13 +129,14 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' });
+        const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin === true }, process.env.JWT_SECRET, { expiresIn: '24h' });
         res.status(200).json({ 
             token,
             user: {
                 email: user.email,
                 isVerified: user.isVerified,
-                hasPassword: user.hasPassword
+                hasPassword: user.hasPassword,
+                isAdmin: user.isAdmin === true
             }
         });
     } catch (error) {

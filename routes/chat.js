@@ -49,7 +49,7 @@ router.get('/resumes', auth, async (req, res) => {
       success: true,
       resumes
     };
-    
+
     res.json(response);
   } catch (error) {
     console.error('Error getting resumes:', error);
@@ -114,6 +114,14 @@ router.post('/upload-resume', auth, upload.single('resume'), async (req, res) =>
       resume: resumeInfo
     };
     
+    // Increment resumeUploadCount only on successful upload
+    try {
+      const userModel = (await import('../models/User.js')).default;
+      await userModel.updateOne({ _id: req.user.id }, { $inc: { resumeUploadCount: 1 } });
+    } catch (incErr) {
+      console.error('Failed to increment resumeUploadCount:', incErr?.message || incErr);
+    }
+
     res.json(response);
 
   } catch (error) {

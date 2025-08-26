@@ -13,6 +13,7 @@ import aiInterviewRouter from './routes/aiInterview.js';
 import aiInterviewSubmitRouter from './routes/aiInterviewSubmit.js';
 import aiInterviewValidateRouter from './routes/aiInterviewValidate.js';
 import reportRouter from './routes/report.js';
+import adminRouter from './routes/admin.js';
 
 // Validate critical environment variables
 const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD', 'GEMINI_API_KEY', 'GROQ_API_KEY'];
@@ -85,6 +86,7 @@ app.use('/api/ai-interview', aiInterviewRouter);
 app.use('/api/ai-interview', aiInterviewSubmitRouter);
 app.use('/api/ai-interview', aiInterviewValidateRouter);
 app.use('/api/report', reportRouter);
+app.use('/api/admin', adminRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {

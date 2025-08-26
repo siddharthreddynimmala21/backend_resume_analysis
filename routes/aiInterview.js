@@ -100,16 +100,22 @@ router.post('/start', upload.single('resume'), async (req, res) => {
     });
 
     // Add a timeout in case the Python process hangs
-    const timeoutMs = 30000; // 30 seconds
+    const timeoutMs = 60000; // 60 seconds
+    let responded = false;
+    const safeJson = (status, body) => {
+      if (responded || res.headersSent) return;
+      responded = true;
+      try { res.status(status).json(body); } catch (_) { /* noop */ }
+    };
     const timeoutHandle = setTimeout(() => {
       pythonProcess.kill('SIGKILL');
-      return res.status(500).json({ error: 'Python script timeout', details: 'The Python script took too long to respond.' });
+      safeJson(500, { error: 'Python script timeout', details: 'The Python script took too long to respond.' });
     }, timeoutMs);
 
     pythonProcess.on('error', (err) => {
       clearTimeout(timeoutHandle);
       console.error('[AIInterview] Python process error:', err);
-      return res.status(500).json({ error: 'Python script error', details: `Failed to start Python process: ${err.message}` });
+      safeJson(500, { error: 'Python script error', details: `Failed to start Python process: ${err.message}` });
     });
 
     pythonProcess.on('close', async (code) => {
@@ -120,8 +126,9 @@ router.post('/start', upload.single('resume'), async (req, res) => {
       console.log('[AIInterview] Python stderr:', errorOut);
       console.log('[AIInterview] Python exit code:', code);
 
+      if (responded || res.headersSent) return; // already handled (e.g., timeout)
       if (code !== 0) {
-        return res.status(500).json({
+        return safeJson(500, {
           error: 'Python script failed',
           details: errorOut || 'Unknown error',
           exitCode: code,
@@ -206,7 +213,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
           mcq_questions: clientQuestions.mcq_questions.map(({ answer, ...rest }) => rest),
         };
       }
-      res.json({ success: true, sessionId, round: parseInt(interviewRound), questions: clientQuestions });
+      safeJson(200, { success: true, sessionId, round: parseInt(interviewRound), questions: clientQuestions });
     });
   } catch (error) {
     res.status(500).json({ error: 'Internal Server Error', message: error.message });

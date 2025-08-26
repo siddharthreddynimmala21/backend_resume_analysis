@@ -41,119 +41,228 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
     prompts = {
         "technical_round1": """
         Generate interview questions for Technical Round 1 based on BOTH the candidate's resume and the job description.
-        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
-        
-        CANDIDATE'S RESUME:
-        {resume_text}
 
-        JOB DESCRIPTION:
-        {job_desc}
-        
-        SKILL ANALYSIS (derived by earlier agents):
-        - Matched Skills (full set): {matched_skills}
-        - Unmatched Skills (full set): {unmatched_skills}
-        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
-        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
-        - Target Role: {target_role}
-        - Experience (years): {experience}
-        
-        INSTRUCTIONS:
-        - Analyze the candidate's background from their resume
-        - Identify key technical requirements from the job description
-        - Focus on fundamental technical skills and basic concepts that match BOTH the resume and job requirements
-        - Validate proficiency in MATCHED skills with appropriately scoped questions
-        - Probe knowledge gaps in UNMATCHED skills with diagnostic questions
-        - Tailor difficulty and context to the Target Role and Experience
-        - Create questions that test skills mentioned in the job description while considering the candidate's experience level
-        - IMPORTANT: When selecting skills to write questions about, ONLY USE the SAMPLED skill lists shown above. Do NOT use skills outside those lists.
-        - Ensure questions are relevant to the specific role and technologies mentioned in the job description
-        
-        Requirements:
-        - Generate EXACTLY 5 MCQ questions with 4 options each (based on technologies/skills from job description)
-        - Generate EXACTLY 3 descriptive questions (focused on job-relevant scenarios and skills)
-        - For MCQ questions, indicate the correct answer as one of "A","B","C","D"
-        - Questions should be tailored to the specific job requirements and candidate's background
-        - Ensure a balanced mix: at least 2 questions targeting unmatched skills (to assess gaps) and 3 leveraging matched skills (to validate strengths)
-        
-        CRITICAL MCQ REQUIREMENTS:
-        - Each MCQ must have EXACTLY ONE correct answer - no ambiguity
-        - The other 3 options must be clearly incorrect or less optimal
-        - Avoid questions where multiple answers could be considered correct
-        - Make sure the correct answer is definitively the best choice
-        - Double-check that the answer you mark as correct is actually correct
-        - Avoid subjective questions - focus on factual, technical knowledge
-        - Test specific, verifiable technical concepts with clear right/wrong answers
-        
-        Output JSON format ONLY (no prose). Return exactly one JSON object with the following structure:
-        {{
-          "mcq_questions": [
-            {{
-              "question": "In JavaScript, what will be the output of: console.log(typeof null)?",
-              "options": ["A. null", "B. undefined", "C. object", "D. boolean"],
-              "answer": "C"
-            }},
-            ... 5 items total ...
-          ],
-          "desc_questions": [
-            "Describe X ...",
-            "Explain Y ...",
-            "How would you approach Z ..."
-          ]
-        }}
+        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
+
+       
+
+        CANDIDATE'S RESUME:
+
+        {resume_text}
+
+
+
+        JOB DESCRIPTION:
+
+        {job_desc}
+
+       
+
+        SKILL ANALYSIS (derived by earlier agents):
+
+        - Matched Skills (full set): {matched_skills}
+
+        - Unmatched Skills (full set): {unmatched_skills}
+
+        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
+
+        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
+
+        - Target Role: {target_role}
+
+        - Experience (years): {experience}
+
+       
+
+        INSTRUCTIONS:
+
+        - Analyze the candidate's background from their resume
+
+        - Identify key technical requirements from the job description
+
+        - Focus on fundamental technical skills and basic concepts that match BOTH the resume and job requirements
+
+        - Validate proficiency in MATCHED skills with appropriately scoped questions
+
+        - Probe knowledge gaps in UNMATCHED skills with diagnostic questions
+
+        - Tailor difficulty and context to the Target Role and Experience
+
+        - Create questions that test skills mentioned in the job description while considering the candidate's experience level
+
+        - IMPORTANT: When selecting skills to write questions about, ONLY USE the SAMPLED skill lists shown above. Do NOT use skills outside those lists.
+
+        - Ensure questions are relevant to the specific role and technologies mentioned in the job description
+
+       
+
+        Requirements:
+
+        - Generate EXACTLY 5 MCQ questions with 4 options each (based on technologies/skills from job description)
+
+        - Generate EXACTLY 3 descriptive questions (focused on job-relevant scenarios and skills)
+
+        - For MCQ questions, indicate the correct answer as one of "A","B","C","D"
+
+        - Questions should be tailored to the specific job requirements and candidate's background
+
+        - Ensure a balanced mix: at least 2 questions targeting unmatched skills (to assess gaps) and 3 leveraging matched skills (to validate strengths)
+
+       
+
+        CRITICAL MCQ REQUIREMENTS:
+
+        - Each MCQ must have EXACTLY ONE correct answer - no ambiguity
+
+        - The other 3 options must be clearly incorrect or less optimal
+
+        - Avoid questions where multiple answers could be considered correct
+
+        - Make sure the correct answer is definitively the best choice
+
+        - Double-check that the answer you mark as correct is actually correct
+
+        - Avoid subjective questions - focus on factual, technical knowledge
+
+        - Test specific, verifiable technical concepts with clear right/wrong answers
+
+       
+
+        Output JSON format ONLY (no prose). Return exactly one JSON object with the following structure:
+
+        {{
+
+          "mcq_questions": [
+
+            {{
+
+              "question": "In JavaScript, what will be the output of: console.log(typeof null)?",
+
+              "options": ["A. null", "B. undefined", "C. object", "D. boolean"],
+
+              "answer": "C"
+
+            }},
+
+            ... 5 items total ...
+
+          ],
+
+          "desc_questions": [
+
+            "Describe X ...",
+
+            "Explain Y ...",
+
+            "How would you approach Z ..."
+
+          ]
+
+        }}
         """,
         
         "technical_round2": """
         Generate ADVANCED interview questions for Technical Round 2 based on BOTH the candidate's resume and the job description.
-        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
-        
-        CANDIDATE'S RESUME:
-        {resume_text}
 
-        JOB DESCRIPTION:
-        {job_desc}
-        
-        SKILL ANALYSIS (derived by earlier agents):
-        - Matched Skills (full set): {matched_skills}
-        - Unmatched Skills (full set): {unmatched_skills}
-        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
-        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
-        - Target Role: {target_role}
-        - Experience (years): {experience}
-        
-        INSTRUCTIONS:
-        - This is a SIGNIFICANTLY MORE DIFFICULT technical round compared to Technical Round 1
-        - Questions must be EXPERT-LEVEL and test deep understanding of complex concepts
-        - Focus on ADVANCED system design, architecture patterns, performance optimization, and scalability challenges
-        - Test knowledge of advanced algorithms, data structures, distributed systems, and enterprise-level solutions
-        - Questions should require SENIOR-LEVEL expertise and problem-solving skills
-        - Consider complex real-world scenarios that require advanced technical decision-making
-        - Validate proficiency in MATCHED skills and probe UNMATCHED skills at advanced depth, considering role and experience
-        - IMPORTANT: ONLY USE the SAMPLED skill lists shown above when choosing skills for questions.
-        
-        DIFFICULTY REQUIREMENTS:
-        - MCQ questions should test EXPERT knowledge of advanced concepts, edge cases, and complex scenarios
-        - Questions should involve multi-layered thinking and deep technical understanding
-        - Focus on advanced topics like: distributed systems, microservices architecture, performance optimization, 
-          advanced algorithms, system scalability, security architecture, advanced database concepts, 
-          cloud architecture patterns, advanced design patterns, and complex problem-solving
-        - Descriptive questions should require designing complex systems and solving challenging technical problems
-        
-        Output JSON format ONLY (no prose). Return exactly one JSON object with the structure:
-        {{
-          "mcq_questions": [
-            {{
-              "question": "In the CAP theorem for distributed systems, what does the 'P' represent?",
-              "options": ["A. Performance", "B. Partition tolerance", "C. Persistence", "D. Parallel processing"],
-              "answer": "B"
-            }},
-            ... 5 items total ...
-          ],
-          "desc_questions": [
-            "Design a fault-tolerant ...",
-            "Architect a real-time ...",
-            "Design a comprehensive security ..."
-          ]
-        }}
+        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
+
+       
+
+        CANDIDATE'S RESUME:
+
+        {resume_text}
+
+
+
+        JOB DESCRIPTION:
+
+        {job_desc}
+
+       
+
+        SKILL ANALYSIS (derived by earlier agents):
+
+        - Matched Skills (full set): {matched_skills}
+
+        - Unmatched Skills (full set): {unmatched_skills}
+
+        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
+
+        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
+
+        - Target Role: {target_role}
+
+        - Experience (years): {experience}
+
+       
+
+        INSTRUCTIONS:
+
+        - This is a SIGNIFICANTLY MORE DIFFICULT technical round compared to Technical Round 1
+
+        - Questions must be EXPERT-LEVEL and test deep understanding of complex concepts
+
+        - Focus on ADVANCED system design, architecture patterns, performance optimization, and scalability challenges
+
+        - Test knowledge of advanced algorithms, data structures, distributed systems, and enterprise-level solutions
+
+        - Questions should require SENIOR-LEVEL expertise and problem-solving skills
+
+        - Consider complex real-world scenarios that require advanced technical decision-making
+
+        - Validate proficiency in MATCHED skills and probe UNMATCHED skills at advanced depth, considering role and experience
+
+        - IMPORTANT: ONLY USE the SAMPLED skill lists shown above when choosing skills for questions.
+
+       
+
+        DIFFICULTY REQUIREMENTS:
+
+        - MCQ questions should test EXPERT knowledge of advanced concepts, edge cases, and complex scenarios
+
+        - Questions should involve multi-layered thinking and deep technical understanding
+
+        - Focus on advanced topics like: distributed systems, microservices architecture, performance optimization,
+
+          advanced algorithms, system scalability, security architecture, advanced database concepts,
+
+          cloud architecture patterns, advanced design patterns, and complex problem-solving
+
+        - Descriptive questions should require designing complex systems and solving challenging technical problems
+
+       
+
+        Output JSON format ONLY (no prose). Return exactly one JSON object with the structure:
+
+        {{
+
+          "mcq_questions": [
+
+            {{
+
+              "question": "In the CAP theorem for distributed systems, what does the 'P' represent?",
+
+              "options": ["A. Performance", "B. Partition tolerance", "C. Persistence", "D. Parallel processing"],
+
+              "answer": "B"
+
+            }},
+
+            ... 5 items total ...
+
+          ],
+
+          "desc_questions": [
+
+            "Design a fault-tolerant ...",
+
+            "Architect a real-time ...",
+
+            "Design a comprehensive security ..."
+
+          ]
+
+        }}
         """,
         
         "managerial_round": """
