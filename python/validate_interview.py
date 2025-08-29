@@ -110,8 +110,14 @@ def validate_descriptive_answers(user_answers: Dict[str, str], questions: List[s
             - 2 points: Mostly correct with minor omissions
             - 3 points: Completely correct and comprehensive
             
+            IMPORTANT STYLE REQUIREMENT:
+            - Write the feedback in SECOND PERSON, as if you are speaking directly to the candidate.
+            - Use "you" language (e.g., "You explained X well, but you missed Y").
+            - Do NOT use third-person phrasing like "the candidate" or "they".
+            - Keep the tone professional, constructive, and concise.
+            
             Provide your evaluation in JSON format only with the following structure:
-            {{"score": <score>, "feedback": "<detailed feedback explaining the score>"}}            
+            {{"score": <score>, "feedback": "<second-person feedback explaining the score>"}}
             """
         )
         

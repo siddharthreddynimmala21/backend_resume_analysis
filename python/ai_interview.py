@@ -158,182 +158,194 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
 
           ]
 
-        }}
+       }}
         """,
         
         "technical_round2": """
         Generate ADVANCED interview questions for Technical Round 2 based on BOTH the candidate's resume and the job description.
 
-        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
-
-       
-
-        CANDIDATE'S RESUME:
-
-        {resume_text}
+        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
 
 
+        CANDIDATE'S RESUME:
 
-        JOB DESCRIPTION:
+        {resume_text}
 
-        {job_desc}
 
-       
 
-        SKILL ANALYSIS (derived by earlier agents):
+        JOB DESCRIPTION:
 
-        - Matched Skills (full set): {matched_skills}
+        {job_desc}
 
-        - Unmatched Skills (full set): {unmatched_skills}
 
-        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
 
-        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
+        SKILL ANALYSIS (derived by earlier agents):
 
-        - Target Role: {target_role}
+        - Matched Skills (full set): {matched_skills}
 
-        - Experience (years): {experience}
+        - Unmatched Skills (full set): {unmatched_skills}
 
-       
+        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
 
-        INSTRUCTIONS:
+        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
 
-        - This is a SIGNIFICANTLY MORE DIFFICULT technical round compared to Technical Round 1
+        - Target Role: {target_role}
 
-        - Questions must be EXPERT-LEVEL and test deep understanding of complex concepts
+        - Experience (years): {experience}
 
-        - Focus on ADVANCED system design, architecture patterns, performance optimization, and scalability challenges
 
-        - Test knowledge of advanced algorithms, data structures, distributed systems, and enterprise-level solutions
 
-        - Questions should require SENIOR-LEVEL expertise and problem-solving skills
+        INSTRUCTIONS:
 
-        - Consider complex real-world scenarios that require advanced technical decision-making
+        - This is a SIGNIFICANTLY MORE DIFFICULT technical round compared to Technical Round 1
 
-        - Validate proficiency in MATCHED skills and probe UNMATCHED skills at advanced depth, considering role and experience
+        - Questions must be EXPERT-LEVEL and test deep understanding of complex concepts
 
-        - IMPORTANT: ONLY USE the SAMPLED skill lists shown above when choosing skills for questions.
+        - Focus on ADVANCED system design, architecture patterns, performance optimization, and scalability challenges
 
-       
+        - Test knowledge of advanced algorithms, data structures, distributed systems, and enterprise-level solutions
 
-        DIFFICULTY REQUIREMENTS:
+        - Questions should require SENIOR-LEVEL expertise and problem-solving skills
 
-        - MCQ questions should test EXPERT knowledge of advanced concepts, edge cases, and complex scenarios
+        - Consider complex real-world scenarios that require advanced technical decision-making
 
-        - Questions should involve multi-layered thinking and deep technical understanding
+        - Validate proficiency in MATCHED skills and probe UNMATCHED skills at advanced depth, considering role and experience
 
-        - Focus on advanced topics like: distributed systems, microservices architecture, performance optimization,
+        - IMPORTANT: ONLY USE the SAMPLED skill lists shown above when choosing skills for questions.
 
-          advanced algorithms, system scalability, security architecture, advanced database concepts,
 
-          cloud architecture patterns, advanced design patterns, and complex problem-solving
 
-        - Descriptive questions should require designing complex systems and solving challenging technical problems
+        DIFFICULTY REQUIREMENTS:
 
-       
+        - MCQ questions should test EXPERT knowledge of advanced concepts, edge cases, and complex scenarios
 
-        Output JSON format ONLY (no prose). Return exactly one JSON object with the structure:
+        - Questions should involve multi-layered thinking and deep technical understanding
 
-        {{
+        - Focus on advanced topics like: distributed systems, microservices architecture, performance optimization,
 
-          "mcq_questions": [
+          advanced algorithms, system scalability, security architecture, advanced database concepts,
 
-            {{
+          cloud architecture patterns, advanced design patterns, and complex problem-solving
 
-              "question": "In the CAP theorem for distributed systems, what does the 'P' represent?",
+        - Descriptive questions should require designing complex systems and solving challenging technical problems
 
-              "options": ["A. Performance", "B. Partition tolerance", "C. Persistence", "D. Parallel processing"],
 
-              "answer": "B"
 
-            }},
+        Output JSON format ONLY (no prose). Return exactly one JSON object with the structure:
 
-            ... 5 items total ...
+        {{
 
-          ],
+          "mcq_questions": [
 
-          "desc_questions": [
+            {{
 
-            "Design a fault-tolerant ...",
+              "question": "In the CAP theorem for distributed systems, what does the 'P' represent?",
 
-            "Architect a real-time ...",
+              "options": ["A. Performance", "B. Partition tolerance", "C. Persistence", "D. Parallel processing"],
 
-            "Design a comprehensive security ..."
+              "answer": "B"
 
-          ]
+            }},
 
-        }}
+            ... 5 items total ...
+
+          ],
+
+          "desc_questions": [
+
+            "Design a fault-tolerant ...",
+
+            "Architect a real-time ...",
+
+            "Design a comprehensive security ..."
+
+          ]
+
+        }}
         """,
-        
+
         "managerial_round": """
-        Generate interview questions for Managerial Round based on BOTH the candidate's resume and the job description.
-        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
-        
+        Generate people-leadership and team-management interview questions for the Managerial Round.
+        Questions must focus on leadership scenarios, conflict resolution, performance management, stakeholder communication, planning/prioritization, and aligning teams to strategy — NOT on individual contributor coding tasks or role-specific technical responsibilities.
+
         CANDIDATE'S RESUME:
         {resume_text}
 
-        JOB DESCRIPTION:
+        JOB DESCRIPTION (use for org context, scope, domain; do NOT copy company-specific bullets):
         {job_desc}
-        
-        SKILL ANALYSIS (derived by earlier agents):
-        - Matched Skills (full set): {matched_skills}
-        - Unmatched Skills (full set): {unmatched_skills}
-        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
-        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
+
+        Candidate/role context:
         - Target Role: {target_role}
         - Experience (years): {experience}
-        
-        INSTRUCTIONS:
-        - Analyze the candidate's leadership experience and management background from their resume
-        - Focus on the specific management responsibilities and team leadership requirements mentioned in the job description
-        - Consider the team size, project scope, and management challenges described in the job posting
-        - IMPORTANT: ONLY USE the SAMPLED skill lists shown above when choosing skills for questions.
-        
-        Requirements:
-        - Generate EXACTLY 5 MCQ questions and EXACTLY 3 descriptive questions
-        - Follow the same JSON output schema as above with keys "mcq_questions" and "desc_questions"
-        
-        Output JSON format ONLY (no prose). Use this structure:
+
+        IMPORTANT GUIDELINES:
+        - Emphasize real-world leadership scenarios over product/company trivia.
+        - Avoid questions like "What are XYZ company's SE2 responsibilities" or any role-specific JD bullet regurgitation.
+        - Prefer situation/behavior/impact framing (STAR) to elicit depth: situation, task, actions, results, learning.
+        - Keep language role-agnostic and domain-neutral where possible; tailor scale/complexity to seniority.
+
+        THEMES TO COVER:
+        - Leading through crisis/ambiguity and communicating under pressure.
+        - Managing interpersonal conflict within the team and across functions.
+        - Coaching, performance feedback, and developing individual strengths.
+        - Prioritization, planning, and aligning execution to strategy/OKRs.
+        - Stakeholder management and influencing without authority.
+
+        OUTPUT REQUIREMENTS:
+        - Generate EXACTLY 5 MCQ questions and EXACTLY 3 descriptive questions.
+        - MCQs should present realistic managerial scenarios with one clearly best response out of four options (A–D). Avoid technical trivia.
+        - Descriptive questions must be open-ended and similar in spirit to:
+          1) "Describe a time you led your team through an unexpected challenge or crisis. How did you navigate it, how did you communicate, and what was the outcome?"
+          2) "Tell me about a time you managed a conflict between team members. What steps did you take and what did you learn about your management style?"
+          3) "How do you identify individual strengths and areas for development and coach an employee to improve performance?"
+          4) "How do you ensure your team's priorities align with company strategic goals?" (Pick three distinct prompts of this nature.)
+
+        FORMAT:
+        Return JSON ONLY (no prose). Use this structure exactly:
         {{
-          "mcq_questions": [ {{"question": "...", "options": ["A. ...","B. ...","C. ...","D. ..."], "answer": "A"}}, ... ],
+          "mcq_questions": [
+            {{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "answer": "A"}},
+            ... five items total ...
+          ],
+          "desc_questions": ["...", "...", "..."]
+        }}
+        """,
+
+        "hr_round": """
+        Generate classic HR interview questions that assess motivation, culture fit, communication, and self-awareness. Avoid technical/role-specific responsibilities.
+
+        CANDIDATE'S RESUME:
+        {resume_text}
+
+        JOB DESCRIPTION (for context only; do not copy bullets):
+        {job_desc}
+
+        Candidate/role context:
+        - Target Role: {target_role}
+        - Experience (years): {experience}
+
+        GUIDELINES:
+        - Focus on: reasons for interest, values/culture fit, conflict resolution experiences, long-term goals, strengths/weaknesses, teamwork, communication.
+        - Keep wording neutral and broadly applicable across companies.
+        - Use simple, familiar HR phrasing.
+
+        OUTPUT REQUIREMENTS:
+        - Generate EXACTLY 5 MCQ questions and EXACTLY 3 descriptive questions.
+        - MCQs should reflect typical HR screening topics with one clearly best option (A–D) among common choices.
+        - Descriptive questions should be open-ended and similar to:
+          1) "Why are you interested in this role and our company?"
+          2) "Tell me about a time you had a conflict with a coworker or manager. How did you resolve it?"
+          3) "Where do you see yourself in 5 years?"
+          4) "What is your greatest weakness and how are you working on it?" (Pick three distinct prompts.)
+
+        FORMAT:
+        Return JSON ONLY (no prose). Use this structure exactly:
+        {{
+          "mcq_questions": [ {{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "answer": "A"}}, ... five items total ... ],
           "desc_questions": ["...", "...", "..."]
         }}
         """,
         
-        "hr_round": """
-        Generate interview questions for HR Round based on BOTH the candidate's resume and the job description.
-        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
-        
-        CANDIDATE'S RESUME:
-        {resume_text}
-
-        JOB DESCRIPTION:
-        {job_desc}
-        
-        SKILL ANALYSIS (derived by earlier agents):
-        - Matched Skills (full set): {matched_skills}
-        - Unmatched Skills (full set): {unmatched_skills}
-        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
-        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
-        - Target Role: {target_role}
-        - Experience (years): {experience}
-        
-        INSTRUCTIONS:
-        - Analyze the candidate's career progression, values, and motivations from their resume
-        - Focus on the company culture, values, and work environment described in the job description
-        - Consider the specific role requirements, team dynamics, and organizational fit mentioned in the job posting
-        - IMPORTANT: ONLY USE the SAMPLED skill lists shown above when choosing skills for questions.
-        
-        Requirements:
-        - Generate EXACTLY 5 MCQ questions and EXACTLY 3 descriptive questions
-        - Follow the JSON output schema with keys "mcq_questions" and "desc_questions"
-        
-        Output JSON format ONLY (no prose). Use this structure:
-        {{
-          "mcq_questions": [ {{"question": "...", "options": ["A. ...","B. ...","C. ...","D. ..."], "answer": "A"}}, ... ],
-          "desc_questions": ["...", "...", "..."]
-        }}
-        """
     }
     
     prompt_template = prompts.get(round_type, prompts["technical_round1"])
@@ -552,6 +564,47 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                     "options": ["A. Option", "B. Option", "C. Option", "D. Option"],
                     "answer": "A"
                 })
+
+            # Randomize options for each MCQ and remap the correct answer accordingly
+            def _strip_label(opt: str) -> str:
+                s = (opt or "").strip()
+                if len(s) >= 3 and s[1] == '.' and s[0].upper() in ['A','B','C','D']:
+                    return s[3:].strip()
+                return s
+
+            randomized_mcq = []
+            import random as _rnd
+            for m in out["mcq_questions"]:
+                opts = m.get("options", [])
+                ans_letter = m.get("answer", "A").strip().upper()
+                # Extract plain texts and identify correct text
+                texts = [_strip_label(o) for o in opts[:4]]
+                try:
+                    correct_idx = ["A","B","C","D"].index(ans_letter)
+                except ValueError:
+                    correct_idx = 0
+                correct_text = texts[correct_idx] if texts else ""
+                # Shuffle texts
+                shuffled = texts[:]
+                _rnd.shuffle(shuffled)
+                # Relabel
+                labeled = []
+                new_correct_idx = 0
+                for i, t in enumerate(shuffled[:4]):
+                    label = chr(65 + i)
+                    labeled.append(f"{label}. {t}")
+                    if t == correct_text and new_correct_idx == 0 and correct_text != "":
+                        new_correct_idx = i
+                # If we didn't match above (e.g., duplicates), fallback to position of first occurrence
+                if correct_text != "" and correct_text in shuffled:
+                    new_correct_idx = shuffled.index(correct_text)
+                new_ans = chr(65 + new_correct_idx)
+                randomized_mcq.append({
+                    "question": str(m.get("question","")),
+                    "options": labeled[:4],
+                    "answer": new_ans
+                })
+            out["mcq_questions"] = randomized_mcq[:5]
 
             return out
 
