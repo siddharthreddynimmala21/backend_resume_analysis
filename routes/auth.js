@@ -129,6 +129,16 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        // Mark activity timestamps
+        try {
+            user.lastLoginAt = new Date();
+            user.lastActiveAt = new Date();
+            await user.save();
+        } catch (e) {
+            // Non-fatal: still allow login if save fails
+            console.warn('Failed to update lastLoginAt/lastActiveAt for', user.email, e?.message || e);
+        }
+
         const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin === true }, process.env.JWT_SECRET, { expiresIn: '24h' });
         res.status(200).json({ 
             token,
