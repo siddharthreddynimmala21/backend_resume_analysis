@@ -7,6 +7,21 @@ from typing import Dict, List, Any, Tuple
 from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
 
+def _resolve_groq_model() -> str:
+    """Resolve a supported Groq model, remapping deprecated names if needed.
+    Honors GROQ_MODEL env var and defaults to a current model if not set.
+    """
+    alias_map = {
+        "llama3-70b-8192": "llama-3.1-70b-versatile",
+        "llama3-8b-8192": "llama-3.1-8b-instant",
+        "llama3-70b": "llama-3.1-70b-versatile",
+        "llama3-8b": "llama-3.1-8b-instant",
+    }
+    env_model = os.getenv("GROQ_MODEL")
+    if env_model:
+        return alias_map.get(env_model, env_model)
+    return "llama-3.1-8b-instant"
+
 def validate_mcq_answers(user_answers: Dict[str, str], correct_answers: List[Dict]) -> Tuple[int, int, List[Dict]]:
     """
     Validate MCQ answers and calculate score.
@@ -67,7 +82,7 @@ def validate_descriptive_answers(user_answers: Dict[str, str], questions: List[s
     if "GROQ_API_KEY" not in os.environ:
         raise RuntimeError("GROQ_API_KEY environment variable is not set.")
     
-    llm = ChatGroq(temperature=0.2, model_name=os.getenv("GROQ_MODEL", "llama3-70b-8192"), max_tokens=2048)
+    llm = ChatGroq(temperature=0.2, model_name=_resolve_groq_model(), max_tokens=2048)
     
     max_score = len(questions) * 3  # Each question is worth 3 points
     detailed_results = []

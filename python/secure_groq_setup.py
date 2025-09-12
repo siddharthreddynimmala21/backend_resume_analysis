@@ -26,11 +26,16 @@ load_dotenv()  # This loads the variables from .env file
 
 # Method 3: Use a secure configuration file that is not committed to git
 # Create a config.json file and add it to .gitignore
-'''
-with open("config.json") as f:
-    config = json.load(f)
-    os.environ["GROQ_API_KEY"] = config["GROQ_API_KEY"]
-'''
+# Example (commented out by default):
+# try:
+#     with open("config.json") as f:
+#         config = json.load(f)
+#         os.environ["GROQ_API_KEY"] = config["GROQ_API_KEY"]
+# except FileNotFoundError:
+#     pass
 
 # Now use the API key from environment
-llm = ChatGroq(temperature=0.7, model_name="llama3-70b-8192", max_tokens=2048)
+# Use a currently supported model; set GROQ_MODEL in env to override
+import os
+model_name = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+llm = ChatGroq(temperature=0.7, model_name=model_name, max_tokens=2048)

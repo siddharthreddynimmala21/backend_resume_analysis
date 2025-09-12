@@ -29,13 +29,31 @@ class InterviewState(TypedDict, total=False):
     questions: Dict[str, Any]
 
 
+def _resolve_groq_model() -> str:
+    """Return a supported Groq model name, remapping deprecated aliases if needed.
+    Honors the GROQ_MODEL env var if present, else defaults to a safe current model.
+    """
+    # Known decommissioned/old aliases -> current recommended equivalents
+    alias_map = {
+        "llama3-70b-8192": "llama-3.1-70b-versatile",
+        "llama3-8b-8192": "llama-3.1-8b-instant",
+        "llama3-70b": "llama-3.1-70b-versatile",
+        "llama3-8b": "llama-3.1-8b-instant",
+    }
+    env_model = os.getenv("GROQ_MODEL")
+    if env_model:
+        return alias_map.get(env_model, env_model)
+    # Default to a currently supported model
+    return "llama-3.1-8b-instant"
+
+
 def build_graph(round_type: str = "technical_round1") -> StateGraph:
     """Return a compiled LangGraph that produces interview questions for different rounds."""
     # Ensure the API key is set; fallback to env variable
     if "GROQ_API_KEY" not in os.environ:
         raise RuntimeError("GROQ_API_KEY environment variable is not set.")
 
-    llm = ChatGroq(temperature=0.7, model_name=os.getenv("GROQ_MODEL", "llama3-70b-8192"), max_tokens=2048)
+    llm = ChatGroq(temperature=0.7, model_name=_resolve_groq_model(), max_tokens=2048)
     
     # Define different prompts for different rounds (now skill-aware)
     prompts = {
@@ -631,7 +649,7 @@ def generate_job_description(target_role: str, experience: str, current_role: st
     if "GROQ_API_KEY" not in os.environ:
         raise RuntimeError("GROQ_API_KEY environment variable is not set.")
 
-    llm = ChatGroq(temperature=0.7, model_name=os.getenv("GROQ_MODEL", "llama3-70b-8192"), max_tokens=2048)
+    llm = ChatGroq(temperature=0.7, model_name=_resolve_groq_model(), max_tokens=2048)
     
     prompt = ChatPromptTemplate.from_template(
         """
