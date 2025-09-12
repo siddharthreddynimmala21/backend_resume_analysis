@@ -1,6 +1,7 @@
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { v4 as uuidv4 } from 'uuid';
 import { Groq } from 'groq-sdk';
+
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -63,6 +64,7 @@ const ChatHistory = mongoose.model('ChatHistory', chatHistorySchema);
 
 class RAGService {
   constructor() {
+
     // Use in-memory storage for vector embeddings (for performance)
     this.collections = new Map();
     
@@ -81,9 +83,9 @@ class RAGService {
     }
     
     // Initialize Gemini embeddings for production-ready vector embeddings
+    // Use default current model inside GeminiEmbeddings (text-embedding-004)
     this.embeddings = new GeminiEmbeddings({
       apiKey: geminiApiKey,
-      modelName: 'embedding-001',
     });
     
     // Initialize Groq client for text generation
@@ -172,6 +174,10 @@ class RAGService {
       const collection = await this.initializeCollection(userId, resumeId);
       // Split text into chunks
       const chunks = await this.textSplitter.createDocuments([resumeText]);
+      if (!chunks || chunks.length === 0) {
+        throw new Error('No text chunks produced from resume');
+      }
+
       // Clear existing data
       collection.documents = [];
       collection.embeddings = [];
@@ -282,7 +288,17 @@ class RAGService {
             content: prompt
           }
         ],
-        model: 'llama3-8b-8192',
+        model: (function resolveGroqModel() {
+          const alias = {
+            'llama3-70b-8192': 'llama-3.1-70b-versatile',
+            'llama3-8b-8192': 'llama-3.1-8b-instant',
+            'llama3-70b': 'llama-3.1-70b-versatile',
+            'llama3-8b': 'llama-3.1-8b-instant',
+          };
+          const envModel = process.env.GROQ_MODEL;
+          if (envModel) return alias[envModel] || envModel;
+          return 'llama-3.1-8b-instant';
+        })(),
         temperature: 0.7,
         max_tokens: 1024,
         top_p: 1,
