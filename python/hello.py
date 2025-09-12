@@ -36,10 +36,23 @@ class ResumeAnalyzer:
         # Directly use the API key passed from JavaScript
         GROQ_BASE_URL = "https://api.groq.com/openai/v1"
         
+        def _resolve_groq_model() -> str:
+            """Resolve a supported Groq model, remapping deprecated names and honoring env var GROQ_MODEL."""
+            alias_map = {
+                "llama3-70b-8192": "llama-3.1-70b-versatile",
+                "llama3-8b-8192": "llama-3.1-8b-instant",
+                "llama3-70b": "llama-3.1-70b-versatile",
+                "llama3-8b": "llama-3.1-8b-instant",
+            }
+            env_model = os.getenv("GROQ_MODEL")
+            if env_model:
+                return alias_map.get(env_model, env_model)
+            return "llama-3.1-8b-instant"
+        
         self.llm = ChatOpenAI(
             openai_api_base=GROQ_BASE_URL,
             openai_api_key=groq_api_key,
-            model="llama3-70b-8192"
+            model=_resolve_groq_model()
         )
         
         # Build the LangGraph workflow
@@ -161,17 +174,28 @@ class ResumeAnalyzer:
         work_experience_rewrite_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a resume optimization expert."),
             ("user", """
-            Given the following work experiences, job description, and target role, rewrite each experience with the following format in markdown:
+            Given the following work experiences (JSON), job description, and target role, rewrite each experience in this exact markdown format:
 
-            ## For each experience:
-            - **Original**: original experience description
-            - **Improved**: rewritten to align with the target role and JD
-            - **Reason**: reasoning behind the changes
+            ### Experience i: ROLE at COMPANY
+            **Original**
+            <original description>
 
-            ### Data:
-            **Job Description**: {jd}  
-            **Target Role**: {target_role}  
-            **Work Experiences**:  
+            **Improved**
+            <improved version aligned with the JD and target role>
+
+            **Reason**
+            <brief explanation why the changes improve alignment and impact>
+
+            Rules:
+            - Replace i with a sequential number starting from 1.
+            - Replace ROLE and COMPANY using the parsed fields from each experience.
+            - Keep headings and bold labels exactly as shown (case-sensitive).
+            - Separate each experience block with one blank line.
+
+            Data:
+            Job Description: {jd}
+            Target Role: {target_role}
+            Work Experiences (JSON array):
             {work_experience}
             """)
         ])
@@ -220,7 +244,20 @@ class ResumeAnalyzer:
             response = work_experience_chain.invoke({"resume_text": state["resume_text"]})
             match = re.search(r"\[\s*{.*?}\s*\]", response, re.DOTALL)
             work_exps = json.loads(match.group(0)) if match else []
-            return {"work_experience_list": work_exps}
+            # Deduplicate experiences by (company, role, tenure, description) normalized
+            seen = set()
+            deduped = []
+            for item in work_exps if isinstance(work_exps, list) else []:
+                company = str(item.get("company", "")).strip().lower()
+                role = str(item.get("role", "")).strip().lower()
+                tenure = str(item.get("tenure", "")).strip().lower()
+                desc = re.sub(r"\s+", " ", str(item.get("description", "")).strip().lower())
+                key = (company, role, tenure, desc)
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(item)
+            return {"work_experience_list": deduped}
 
         def skills_match_node(state):
             response = skills_match_chain.invoke({

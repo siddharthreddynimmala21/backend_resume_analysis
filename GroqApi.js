@@ -15,6 +15,20 @@ const groq = new Groq({
     apiKey: groqApiKey,
 });
 
+function resolveGroqModel() {
+    // Map deprecated/alias model names to supported ones
+    const aliasMap = {
+        'llama3-70b-8192': 'llama-3.1-70b-versatile',
+        'llama3-8b-8192': 'llama-3.1-8b-instant',
+        'llama3-70b': 'llama-3.1-70b-versatile',
+        'llama3-8b': 'llama-3.1-8b-instant',
+    };
+    const envModel = process.env.GROQ_MODEL;
+    if (envModel) return aliasMap[envModel] || envModel;
+    // Default to a current model
+    return 'llama-3.1-8b-instant';
+}
+
 export async function generateResponse(prompt) {
     try {
         //console.log('Generating response with Groq API...');
@@ -25,7 +39,7 @@ export async function generateResponse(prompt) {
                     content: prompt,
                 },
             ],
-            model: 'llama3-8b-8192', // Using llama3-8b-8192 as a good free model
+            model: resolveGroqModel(),
             temperature: 0.7,
             max_tokens: 1024,
             top_p: 1,
