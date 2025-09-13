@@ -180,7 +180,7 @@ class ResumeAnalyzer:
             **Original**
             <original description>
 
-            **Improved**
+            **Enhancements**
             <improved version aligned with the JD and target role>
 
             **Reason**
@@ -203,12 +203,23 @@ class ResumeAnalyzer:
         projects_rewrite_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a resume optimization expert."),
             ("user", """
-            Given the following projects, job description, and target role, rewrite each project with the following format in markdown:
+            Given the following projects (JSON), job description, and target role, rewrite each project to match the SAME structure as work experience. Use this exact markdown format:
 
-            ## For each project:
-            - **Original**: original project description
-            - **Improved**: rewritten to align with the target role and JD
-            - **Reason**: reasoning behind the changes
+            ### Project i - PROJECT_NAME
+            **Original**
+            <original project description>
+
+            **Enhancements**
+            <rewritten version aligned with the JD and target role>
+
+            **Reason**
+            <brief explanation why these changes improve alignment and impact>
+
+            Rules:
+            - Replace i with a sequential number starting from 1.
+            - Replace PROJECT_NAME using the "name" field from each project JSON object.
+            - Keep headings and bold labels exactly as shown (case-sensitive).
+            - Separate each project block with one blank line.
 
             ### Data:
             **Job Description**: {jd}  
@@ -323,12 +334,12 @@ class ResumeAnalyzer:
 
 ---
 
-## 💻 Improved Projects (Aligned to JD & Target Role)
+## 💻 Enhancements to Projects (Aligned to JD & Target Role)
 {projects}
 
 ---
 
-## 💼 Improved Work Experience (Aligned to JD & Target Role)
+## 💼 Enhancements to Work Experience (Aligned to JD & Target Role)
 {work_exp}
 
 ---

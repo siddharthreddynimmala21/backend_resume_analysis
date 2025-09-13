@@ -257,7 +257,12 @@ router.post('/query', auth, async (req, res) => {
         metadata: {
           isGeneralChat: true,
           timestamp: new Date().toISOString()
-        }
+        },
+        followUpSuggestions: [
+          'I want a job switch, which role can I consider according to my resume?',
+          'What improvements can I make to the resume?',
+          'Can you suggest stronger bullet points for my experience?'
+        ]
       };
       
       return res.json(generalResponse);
@@ -279,7 +284,8 @@ router.post('/query', auth, async (req, res) => {
       success: true,
       answer: result.answer,
       relevantChunks: result.relevantChunks,
-      confidence: result.confidence
+      confidence: result.confidence,
+      followUpSuggestions: result.followUpSuggestions || []
     });
 
   } catch (error) {

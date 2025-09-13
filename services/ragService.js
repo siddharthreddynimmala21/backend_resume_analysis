@@ -307,6 +307,72 @@ class RAGService {
       
       const answer = chatCompletion.choices[0]?.message?.content || "";
       
+      // Generate 3 concise follow-up question suggestions based on the conversation so far
+      let followUpSuggestions = [];
+      try {
+        const followupSystem = (
+          'You generate three concise, natural follow-up QUESTIONS in the first person, '
+          + 'focused on resume improvement, role fit, interview prep, or career guidance. '
+          + 'STYLE: conversational, resume/career-centric, under 15 words, end with a question mark, '
+          + 'avoid quotes, no numbering, no extra text. '
+          + 'TONE EXAMPLES: I want a job switch, which role can I consider according to my resume? '
+          + 'What improvements can I make to the resume? '
+          + 'OUTPUT: ONLY a strict JSON array of exactly 3 strings.'
+        );
+        const followupUser = `Context:\nResume snippets:\n${context}\n\nConversation history:\n${conversationContext || 'N/A'}\n\nLast user question: ${question}\nYour answer: ${answer}\n\nReturn a JSON array of exactly 3 first-person, resume/career-focused follow-up questions, each under 15 words, ending with a question mark.`;
+        const followupCompletion = await this.groq.chat.completions.create({
+          messages: [
+            { role: 'system', content: followupSystem },
+            { role: 'user', content: followupUser }
+          ],
+          model: (function resolveGroqModel() {
+            const alias = {
+              'llama3-70b-8192': 'llama-3.1-70b-versatile',
+              'llama3-8b-8192': 'llama-3.1-8b-instant',
+              'llama3-70b': 'llama-3.1-70b-versatile',
+              'llama3-8b': 'llama-3.1-8b-instant',
+            };
+            const envModel = process.env.GROQ_MODEL;
+            if (envModel) return alias[envModel] || envModel;
+            return 'llama-3.1-8b-instant';
+          })(),
+          temperature: 0.6,
+          max_tokens: 256,
+          top_p: 1,
+          stream: false,
+        });
+        const rawFollowups = followupCompletion.choices[0]?.message?.content || '[]';
+        try {
+          const parsed = JSON.parse(rawFollowups);
+          if (Array.isArray(parsed)) {
+            followUpSuggestions = parsed
+              .filter(x => typeof x === 'string')
+              .map(x => x.trim().replace(/^"|"$/g, ''))
+              .map(x => x.endsWith('?') ? x : (x + '?'))
+              .filter(x => x.length > 0)
+              .slice(0, 3);
+          }
+        } catch (parseErr) {
+          // Try to salvage by extracting JSON-like content
+          const match = rawFollowups.match(/\[([\s\S]*)\]/);
+          if (match) {
+            try {
+              const parsed2 = JSON.parse(match[0]);
+              if (Array.isArray(parsed2)) {
+                followUpSuggestions = parsed2
+                  .filter(x => typeof x === 'string')
+                  .map(x => x.trim().replace(/^"|"$/g, ''))
+                  .map(x => x.endsWith('?') ? x : (x + '?'))
+                  .filter(x => x.length > 0)
+                  .slice(0, 3);
+              }
+            } catch {}
+          }
+        }
+      } catch (fuErr) {
+        console.warn('Failed to generate follow-up suggestions:', fuErr?.message || fuErr);
+      }
+      
       return {
         success: true,
         answer,
@@ -314,7 +380,8 @@ class RAGService {
           content: result.document,
           similarity: result.similarity
         })),
-        confidence: topResults[0]?.similarity || 0
+        confidence: topResults[0]?.similarity || 0,
+        followUpSuggestions
       };
     } catch (error) {
       console.error('Error querying resume:', error);
