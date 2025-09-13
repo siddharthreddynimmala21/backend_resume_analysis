@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+import re
 from typing import Dict, List, Any, Tuple
 
 from langchain_groq import ChatGroq
@@ -96,6 +97,39 @@ def validate_descriptive_answers(user_answers: Dict[str, str], questions: List[s
     else:
         print("DEBUG: Descriptive validation - No questions provided", file=sys.stderr)
     
+    # Heuristic helpers
+    def _is_non_informative(text: str) -> bool:
+        if not isinstance(text, str):
+            return True
+        s = text.strip()
+        if len(s) < 5:
+            return True
+        # Only punctuation/whitespace
+        if re.fullmatch(r"[\W_]+", s):
+            return True
+        # Very low alphanumeric content
+        alnum = re.sub(r"[^A-Za-z0-9]", "", s)
+        if len(alnum) < 3:
+            return True
+        # Repeated same character patterns like "....." or "aaaaa"
+        if re.fullmatch(r"(.)\1{2,}", s):
+            return True
+        # Extremely low unique character variety
+        if len(set(s)) <= 2:
+            return True
+        return False
+
+    def _tokens(text: str) -> List[str]:
+        return re.findall(r"[A-Za-z0-9]+", (text or "").lower())
+
+    def _overlap_ratio(q: str, a: str) -> float:
+        qt = set(_tokens(q))
+        at = set(_tokens(a))
+        if not at:
+            return 0.0
+        inter = len(qt & at)
+        return inter / max(1, len(at))
+
     for idx, question in enumerate(questions):
         user_answer = user_answers.get(str(idx), "")
         
@@ -109,30 +143,71 @@ def validate_descriptive_answers(user_answers: Dict[str, str], questions: List[s
                 "feedback": "No answer provided."
             })
             continue
+
+        # Pre-LLM heuristics: immediately reject non-informative or off-topic, ultra-short answers
+        if _is_non_informative(user_answer):
+            detailed_results.append({
+                "question": question,
+                "user_answer": user_answer,
+                "score": 0,
+                "max_score": 3,
+                "feedback": "Your answer appears non-informative (empty, only symbols, or gibberish). Provide a substantive response."
+            })
+            continue
+
+        # Low-overlap with short length: likely off-topic
+        overlap = _overlap_ratio(question, user_answer)
+        ans_tokens = _tokens(user_answer)
+        if overlap < 0.1 and len(ans_tokens) < 6:
+            detailed_results.append({
+                "question": question,
+                "user_answer": user_answer,
+                "score": 0,
+                "max_score": 3,
+                "feedback": "Your answer does not address the question. Please provide a relevant, detailed response."
+            })
+            continue
         
-        # Create prompt for evaluation
+        # Create prompt for evaluation with explicit relevance gating and structured rubric
         prompt = ChatPromptTemplate.from_template(
             """
-            You are an expert technical interviewer evaluating a candidate's answer to a question.
-            
+            You are an expert interviewer STRICTLY evaluating how well an answer addresses the SPECIFIC question.
+            Score only for content that is relevant and correct for THIS question.
+
             Question: {question}
-            
             Candidate's Answer: {answer}
-            
-            Evaluate the answer on a scale of 0-3 points where:
-            - 0 points: Completely incorrect or irrelevant
-            - 1 point: Partially correct but missing key concepts
-            - 2 points: Mostly correct with minor omissions
-            - 3 points: Completely correct and comprehensive
-            
-            IMPORTANT STYLE REQUIREMENT:
-            - Write the feedback in SECOND PERSON, as if you are speaking directly to the candidate.
-            - Use "you" language (e.g., "You explained X well, but you missed Y").
-            - Do NOT use third-person phrasing like "the candidate" or "they".
-            - Keep the tone professional, constructive, and concise.
-            
-            Provide your evaluation in JSON format only with the following structure:
-            {{"score": <score>, "feedback": "<second-person feedback explaining the score>"}}
+
+            EVALUATION STEPS:
+            1) Identify the key requirements of the question (short bullet list).
+            2) Identify the main claims/points made in the answer (short bullet list).
+            3) Determine relevance: the proportion of answer points that directly address the question's key requirements.
+               - Output a numeric relevance value in [0,1]. If relevance < 0.4, the answer is considered off-topic.
+            4) Determine correctness: for the relevant parts only, how accurate/appropriate are they (in [0,1]).
+            5) Assign the final score in [0,1,2,3] using this STRICT rubric:
+               - If relevance < 0.4: score = 0 (off-topic or mostly irrelevant).
+               - Else if relevance < 0.7: score ∈ [1,2] depending on correctness (<=0.5 -> 1, >0.5 -> 2).
+               - Else (relevance >= 0.7): score ∈ [2,3] depending on correctness (<=0.6 -> 2, >0.6 -> 3).
+
+            IMPORTANT:
+            - If the answer is empty, only punctuation/symbols (e.g., "..."), repeated characters, or obvious gibberish,
+              set relevance = 0 and score = 0.
+
+            STYLE REQUIREMENT FOR FEEDBACK:
+            - Write feedback in SECOND PERSON (use "you").
+            - Be concise, professional, and point out missing key points explicitly.
+
+            OUTPUT STRICT JSON ONLY with this structure:
+            {{
+              "score": <0|1|2|3>,
+              "relevance": <float 0..1>,
+              "feedback": "<second-person feedback>",
+              "reasoning": {{
+                "question_points": ["..."],
+                "answer_points": ["..."],
+                "matched_points": ["..."],
+                "missing_points": ["..."]
+              }}
+            }}
             """
         )
         
@@ -147,11 +222,28 @@ def validate_descriptive_answers(user_answers: Dict[str, str], questions: List[s
                     result = result[4:].strip()
             
             evaluation = json.loads(result)
+            # Pull fields with defaults
             score = int(evaluation.get("score", 0))
             feedback = evaluation.get("feedback", "No feedback provided.")
+            relevance = float(evaluation.get("relevance", 0))
             
             # Ensure score is within valid range
             score = max(0, min(score, 3))
+            # Enforce off-topic gating: if low relevance, force zero (stricter server threshold)
+            if relevance < 0.6:
+                score = 0
+
+            # Additional server-side safeguards against short/gibberish answers
+            ans_tokens = re.findall(r"[A-Za-z0-9]+", (user_answer or "").lower())
+            token_count = len(ans_tokens)
+            char_count = len((user_answer or "").strip())
+
+            # If extremely short, force 0
+            if token_count < 5 or char_count < 15:
+                score = 0
+            # If short-ish, cap at 1
+            elif token_count < 8 and score > 1:
+                score = 1
             total_score += score
             
             detailed_results.append({
@@ -159,7 +251,9 @@ def validate_descriptive_answers(user_answers: Dict[str, str], questions: List[s
                 "user_answer": user_answer,
                 "score": score,
                 "max_score": 3,
-                "feedback": feedback
+                "feedback": feedback,
+                "relevance": relevance,
+                "llm_raw": evaluation
             })
             
         except (json.JSONDecodeError, ValueError) as e:

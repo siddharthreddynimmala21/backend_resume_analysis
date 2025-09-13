@@ -471,6 +471,19 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                         if not isinstance(item, dict):
                             continue
                         q = str(item.get("question", "")).strip()
+                        # Strip code fence artifacts and numbering like 'Q6.'
+                        q = q.replace("```", "").strip()
+                        if q.lower().startswith("q") and ":" not in q and "." in q[:5]:
+                            # Remove leading 'Qn.' prefix
+                            try:
+                                parts = q.split(".", 1)
+                                if parts[0][1:].isdigit():
+                                    q = parts[1].strip()
+                            except Exception:
+                                pass
+                        # Drop placeholder text entirely
+                        if q.lower().startswith("placeholder mcq"):
+                            q = "Which of the following best aligns with the target role?"
                         opts = item.get("options", [])
                         ans = str(item.get("answer", "")).strip().upper()
                         if not isinstance(opts, list):
@@ -481,6 +494,7 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                         labeled = []
                         for i, o in enumerate(opts[:4]):
                             label = chr(65 + i)
+                            o = str(o).replace("```", "").strip()
                             if is_option_like(o):
                                 labeled.append(o)
                             else:
@@ -501,8 +515,26 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                             })
                 if isinstance(descs, list):
                     for d in descs:
-                        if isinstance(d, str) and not is_option_like(d):
-                            out["desc_questions"].append(d.strip())
+                        if not isinstance(d, str):
+                            continue
+                        s = d.replace("```", "").strip()
+                        # Remove leading numbering like 'Q6.'
+                        if s.lower().startswith("q") and "." in s[:5]:
+                            try:
+                                parts = s.split(".", 1)
+                                if parts[0][1:].isdigit():
+                                    s = parts[1].strip()
+                            except Exception:
+                                pass
+                        # Filter out code block markers or empty/very short strings
+                        if not s or len(s) < 8:
+                            continue
+                        if is_option_like(s):
+                            continue
+                        # Prefer questions or instruction-like prompts
+                        if not (s.endswith("?") or s.lower().startswith(("describe", "explain", "how", "what", "why", "design"))):
+                            continue
+                        out["desc_questions"].append(s)
 
             # If parsed is list or malformed dict, derive heuristically from text
             if not out["mcq_questions"] and not out["desc_questions"]:
@@ -511,7 +543,8 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                     lines = [str(x) for x in parsed]
                 else:
                     # fallback: split raw text
-                    lines = [ln.strip("- ") for ln in str(result).split("\n") if ln.strip()]
+                    raw = str(result).replace("```", "")
+                    lines = [ln.strip("- ") for ln in raw.split("\n") if ln.strip()]
 
                 # Heuristic: collect long sentences as descriptive, group blocks into MCQ when we see a question followed by options
                 temp_mcq = []
@@ -524,6 +557,14 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                     # If the line looks like a question (ends with ? or is long) and following lines include options
                     lookahead = lines[i+1:i+6]
                     opts = [x for x in lookahead if is_option_like(x)]
+                    # Clean line numbering like 'Q6.'
+                    if line.lower().startswith("q") and "." in line[:5]:
+                        try:
+                            p = line.split(".", 1)
+                            if p[0][1:].isdigit():
+                                line = p[1].strip()
+                        except Exception:
+                            pass
                     if (line.endswith('?') or len(line) > 40) and len(opts) >= 3:
                         # take first 4 options
                         taken = []
@@ -533,7 +574,7 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                             if len(taken) == 4:
                                 break
                         temp_mcq.append({
-                            "question": line,
+                            "question": line if not line.lower().startswith("placeholder mcq") else "Which of the following best aligns with the target role?",
                             "options": taken if len(taken) == 4 else (taken + [f"{chr(65+len(taken))}. Option"]*(4-len(taken))),
                             "answer": "A"
                         })
@@ -576,9 +617,8 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                 out["desc_questions"].append("Describe a project relevant to the role and your contribution.")
 
             while len(out["mcq_questions"]) < 5:
-                idx = len(out["mcq_questions"]) + 1
                 out["mcq_questions"].append({
-                    "question": f"Placeholder MCQ {idx} based on the job description and resume.",
+                    "question": "Which of the following best aligns with the target role?",
                     "options": ["A. Option", "B. Option", "C. Option", "D. Option"],
                     "answer": "A"
                 })

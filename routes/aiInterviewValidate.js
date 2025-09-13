@@ -194,9 +194,8 @@ router.post('/validate', async (req, res) => {
           return res.status(500).json({ error: 'Failed to update validation results' });
         }
 
-        // Email the validation report PDF to the user (legacy, markdown->PDF)
-        // Only send if not explicitly disabled by client
-        if (sendEmail !== false) try {
+        // Email sending is now opt-in on validate; final emailing should be done via /finalize
+        if (sendEmail === true) try {
           // Re-fetch session to access userId and round data
           const freshSession = await InterviewSession.findOne({ 'interviews.sessionId': sessionId });
           let userEmail = null;
@@ -247,18 +246,6 @@ router.post('/validate', async (req, res) => {
                   lines.push(`  - Q${i + 1}: ${typeof d === 'string' ? d : JSON.stringify(d)}`);
                 });
               }
-              lines.push('');
-            }
-            const markdown = lines.join('\n');
-
-            const subject = 'Your AI Interview Report (PDF)';
-            const sent = await sendPDFReportEmail(userEmail, subject, markdown);
-            if (!sent) {
-              console.error('Report PDF email failed to send to', userEmail, '- attempting Markdown email fallback');
-              const fallback = await sendMarkdownReportEmail(userEmail, 'Your AI Interview Report', markdown);
-              if (!fallback) {
-                console.error('Markdown fallback email also failed for', userEmail);
-              }
             }
           } else {
             console.warn('User email not found for session', sessionId);
@@ -283,6 +270,142 @@ router.post('/validate', async (req, res) => {
   } catch (error) {
     console.error('Error in validation route:', error);
     return res.status(500).json({ error: 'Server error', details: error.message });
+  }
+});
+
+/**
+ * @route POST /api/ai-interview/finalize
+ * @desc Send a single consolidated report email after the entire interview ends (all completed rounds)
+ * @access Private
+ */
+router.post('/finalize', async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+
+    const session = await InterviewSession.findOne({ 'interviews.sessionId': sessionId });
+    if (!session) {
+      return res.status(404).json({ error: 'Interview session not found' });
+    }
+    const interview = session.interviews.find(i => i.sessionId === sessionId);
+    if (!interview) {
+      return res.status(404).json({ error: 'Interview not found' });
+    }
+
+    // Build consolidated markdown across all rounds
+    const lines = [];
+    lines.push('# AI Interview Report (All Rounds)');
+    lines.push('');
+    lines.push(`- Session ID: ${sessionId}`);
+    let userEmail = null;
+    if (session.userId) {
+      try {
+        const user = await User.findById(session.userId);
+        userEmail = user?.email || null;
+      } catch {}
+    }
+    if (userEmail) lines.push(`- User: ${userEmail}`);
+    lines.push('');
+
+    let aggTotal = 0, aggMax = 0;
+    const rounds = (interview.rounds || []).slice().sort((a,b)=> (a.round||0) - (b.round||0));
+    for (const r of rounds) {
+      const v = r.validation || {};
+      lines.push(`## Round ${r.round}`);
+      if (typeof v.percentage !== 'undefined') lines.push(`- Percentage: ${v.percentage}%`);
+      if (typeof v.total_score !== 'undefined' && typeof v.max_possible_score !== 'undefined') {
+        lines.push(`- Score: ${v.total_score} / ${v.max_possible_score}`);
+        aggTotal += Number(v.total_score || 0);
+        aggMax += Number(v.max_possible_score || 0);
+      }
+      if (v.verdict) lines.push(`- Verdict: ${v.verdict}`);
+      lines.push('');
+
+      // Detailed MCQ section
+      if (v.mcq) {
+        lines.push(`### MCQ Section`);
+        if (typeof v.mcq.score !== 'undefined' && typeof v.mcq.max_score !== 'undefined') {
+          lines.push(`- Score: ${v.mcq.score} / ${v.mcq.max_score}`);
+        }
+        if (Array.isArray(v.mcq.details) && v.mcq.details.length) {
+          v.mcq.details.forEach((d, i) => {
+            if (d && typeof d === 'object') {
+              const question = d.question || '';
+              const options = Array.isArray(d.options) ? d.options : [];
+              const isCorrect = d.is_correct ? 'Correct' : 'Incorrect';
+              const ua = (d.user_answer || '').toString().trim();
+              const ca = (d.correct_answer || '').toString().trim();
+              lines.push(`- Q${i + 1}: ${question}`);
+              if (options.length) {
+                lines.push(`  - Options:`);
+                options.forEach((opt, idx) => {
+                  lines.push(`    - ${opt}`);
+                });
+              }
+              lines.push(`  - Your answer: ${ua}`);
+              lines.push(`  - Correct answer: ${ca}`);
+              lines.push(`  - Result: ${isCorrect}`);
+            } else {
+              lines.push(`- Q${i + 1}: ${typeof d === 'string' ? d : JSON.stringify(d)}`);
+            }
+          });
+        }
+        lines.push('');
+      }
+
+      // Detailed Descriptive section
+      if (v.descriptive) {
+        lines.push(`### Descriptive Section`);
+        if (typeof v.descriptive.score !== 'undefined' && typeof v.descriptive.max_score !== 'undefined') {
+          lines.push(`- Score: ${v.descriptive.score} / ${v.descriptive.max_score}`);
+        }
+        if (Array.isArray(v.descriptive.details) && v.descriptive.details.length) {
+          v.descriptive.details.forEach((d, i) => {
+            if (d && typeof d === 'object') {
+              const question = d.question || d.prompt || '';
+              const scoreLine = (d.score != null)
+                ? `Score: ${d.score}${d.max_score != null ? ' / ' + d.max_score : ''}`
+                : '';
+              const feedback = d.feedback || d.explanation || '';
+              const relevance = (typeof d.relevance !== 'undefined') ? ` (relevance: ${d.relevance})` : '';
+              lines.push(`- Q${i + 1}: ${question}`);
+              lines.push(`  - Your answer: ${(d.user_answer || d.answer || '').toString()}`);
+              if (scoreLine) lines.push(`  - ${scoreLine}${relevance}`);
+              if (feedback) lines.push(`  - Feedback: ${feedback}`);
+            } else {
+              lines.push(`- Q${i + 1}: ${typeof d === 'string' ? d : JSON.stringify(d)}`);
+            }
+          });
+        }
+        lines.push('');
+      }
+    }
+
+    lines.push('---');
+    lines.push('');
+    lines.push('## Overall Summary');
+    if (aggMax > 0) {
+      const pct = Math.round((aggTotal / aggMax) * 10000) / 100;
+      lines.push(`- Total Score: ${aggTotal} / ${aggMax}`);
+      lines.push(`- Overall Percentage: ${pct}%`);
+    }
+
+    const markdown = lines.join('\n');
+    if (userEmail) {
+      const subject = 'Your AI Interview Report (All Rounds)';
+      const sent = await sendPDFReportEmail(userEmail, subject, markdown);
+      if (!sent) {
+        console.error('Finalize PDF email failed; attempting Markdown email fallback');
+        await sendMarkdownReportEmail(userEmail, subject, markdown);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: 'Final report sent', markdown });
+  } catch (err) {
+    console.error('Error in /finalize:', err);
+    return res.status(500).json({ error: 'Failed to finalize interview', details: err.message });
   }
 });
 
