@@ -1,5 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import User from '../models/User.js';
 import { sendOTPEmail } from '../utils/emailService.js';
 
@@ -17,101 +18,106 @@ router.get('/test', (req, res) => {
     });
 });
 
-// Register new user
+// Helper: create a short-lived JWT carrying signup state without DB persistence
+const signSignupToken = (payload, expiresIn) =>
+  jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
+
+// Register (begin signup) - DO NOT persist user yet
 router.post('/register', async (req, res) => {
-    try {
-        const { email } = req.body;
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
 
-        // Check if user already exists
-        let user = await User.findOne({ email });
-        if (user) {
-            if (user.isVerified && user.hasPassword) {
-                return res.status(400).json({ message: 'Email already registered' });
-            }
-        } else {
-            user = new User({ email });
-        }
-
-        // Generate and send OTP
-        const otp = user.generateOTP();
-        // Only log OTP in development environment
-        if (process.env.NODE_ENV === 'development') {
-            console.log('Generated OTP for', email, '(for testing only):', otp);
-        }
-        await user.save();
-        
-        if (!await sendOTPEmail(email, otp)) {
-            console.error('Failed to send OTP email to:', email);
-            return res.status(500).json({ message: 'Failed to send OTP email' });
-        }
-
-        return res.status(200).json({ 
-            message: 'OTP sent successfully', 
-            email,
-            isVerified: user.isVerified,
-            hasPassword: user.hasPassword
-        });
-    } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ message: 'Server error', error: error.message });
+    // If a fully registered user exists, block reuse
+    const existing = await User.findOne({ email });
+    if (existing && existing.isVerified && existing.hasPassword) {
+      return res.status(400).json({ message: 'Email already registered' });
     }
+
+    // Generate OTP (6-digit) and email it; do not store in DB
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Generated OTP for', email, '(for testing only):', otp);
+    }
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+    const tempToken = signSignupToken({ t: 'signup', email, otpHash }, '10m');
+
+    if (!await sendOTPEmail(email, otp)) {
+      console.error('Failed to send OTP email to:', email);
+      return res.status(500).json({ message: 'Failed to send OTP email' });
+    }
+
+    return res.status(200).json({
+      message: 'OTP sent successfully',
+      email,
+      tempToken,
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 });
 
-// Verify OTP
+// Verify OTP without persisting user; return a verifiedToken for next step
 router.post('/verify-otp', async (req, res) => {
+  try {
+    const { tempToken, otp } = req.body;
+    if (!tempToken || !otp) return res.status(400).json({ message: 'Missing token or OTP' });
+    let decoded;
     try {
-        const { email, otp } = req.body;
-
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        if (!user.verifyOTP(otp)) {
-            return res.status(400).json({ message: 'Invalid or expired OTP' });
-        }
-
-        // Mark user as verified
-        user.isVerified = true;
-        user.clearOTP();
-        await user.save();
-        return res.status(200).json({ 
-            message: 'OTP verified successfully',
-            hasPassword: user.hasPassword,
-            isVerified: true
-        });
-    } catch (error) {
-        console.error('OTP verification error:', error);
-        res.status(500).json({ message: 'Server error', error: error.message });
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch (e) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
     }
+    if (decoded.t !== 'signup' || !decoded.email || !decoded.otpHash) {
+      return res.status(400).json({ message: 'Invalid token payload' });
+    }
+    const hash = crypto.createHash('sha256').update(otp).digest('hex');
+    if (hash !== decoded.otpHash) {
+      return res.status(400).json({ message: 'Invalid OTP' });
+    }
+    const verifiedToken = signSignupToken({ t: 'signup_verified', email: decoded.email }, '30m');
+    return res.status(200).json({ message: 'OTP verified successfully', verifiedToken });
+  } catch (error) {
+    console.error('OTP verification error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 });
 
-// Setup password after OTP verification
+// Setup password after OTP verification; now persist the user for the first time
 router.post('/setup-password', async (req, res) => {
+  try {
+    const { verifiedToken, password } = req.body;
+    if (!verifiedToken || !password) return res.status(400).json({ message: 'Missing token or password' });
+    let decoded;
     try {
-        const { email, password } = req.body;
-
-        const user = await User.findOne({ email });
-        if (!user || !user.isVerified) {
-            return res.status(400).json({ message: 'User not found or not verified' });
-        }
-
-        if (user.hasPassword) {
-            return res.status(400).json({ message: 'Password already set' });
-        }
-
-        user.password = password;
-        await user.save();
-
-        const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin === true }, process.env.JWT_SECRET, { expiresIn: '24h' });
-        res.status(200).json({ 
-            message: 'Password set successfully',
-            token 
-        });
-    } catch (error) {
-        console.error('Password setup error:', error);
-        res.status(500).json({ message: 'Server error', error: error.message });
+      decoded = jwt.verify(verifiedToken, process.env.JWT_SECRET);
+    } catch (e) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
     }
+    if (decoded.t !== 'signup_verified' || !decoded.email) {
+      return res.status(400).json({ message: 'Invalid token payload' });
+    }
+
+    const email = decoded.email;
+    // If a user exists but incomplete from legacy flow, remove it
+    const existing = await User.findOne({ email });
+    if (existing && !(existing.isVerified && existing.hasPassword)) {
+      await User.deleteOne({ _id: existing._id });
+    }
+    if (existing && existing.isVerified && existing.hasPassword) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    const user = new User({ email, password, isVerified: true });
+    await user.save();
+
+    const token = jwt.sign({ userId: user._id, isAdmin: user.isAdmin === true }, process.env.JWT_SECRET, { expiresIn: '24h' });
+    res.status(200).json({ message: 'Password set successfully', token });
+  } catch (error) {
+    console.error('Password setup error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
 });
 
 // Login
