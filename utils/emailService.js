@@ -25,19 +25,44 @@ const styleMarkdownHtml = (html) => {
 
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
-    // Gmail SMTP configuration
-    return nodemailer.createTransport({
-        service: 'gmail',
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true, // Use SSL
+    // Allow overriding SMTP settings via environment for production
+    const host = process.env.SMTP_HOST || 'smtp.gmail.com';
+    const port = Number(process.env.SMTP_PORT || 465);
+    // If SMTP_SECURE is explicitly provided, respect it; otherwise infer from port
+    const secure = (
+        typeof process.env.SMTP_SECURE === 'string'
+            ? ['true', '1', 'yes'].includes(process.env.SMTP_SECURE.toLowerCase())
+            : port === 465
+    );
+
+    const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        pool: true,
+        maxConnections: 3,
+        maxMessages: 50,
         auth: {
             user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASSWORD
+            pass: process.env.EMAIL_PASSWORD,
         },
-        debug: process.env.NODE_ENV === 'development', // Enable debug logs only in development
-        logger: process.env.NODE_ENV === 'development' // Log to console only in development
+        // More robust timeouts to avoid hanging in certain hosts
+        connectionTimeout: Number(process.env.SMTP_CONN_TIMEOUT || 20000), // 20s
+        greetingTimeout: Number(process.env.SMTP_GREET_TIMEOUT || 15000),  // 15s
+        socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 30000),   // 30s
+        // TLS controls; default to secure behavior, allow override if needed
+        tls: {
+            rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED
+                ? !['false', '0', 'no'].includes(process.env.SMTP_REJECT_UNAUTHORIZED.toLowerCase())
+                : true,
+            // Some providers require SNI servername
+            servername: host,
+        },
+        debug: process.env.NODE_ENV === 'development',
+        logger: process.env.NODE_ENV === 'development',
     });
+
+    return transporter;
 };
 
 /**
