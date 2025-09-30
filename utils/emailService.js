@@ -27,13 +27,16 @@ const styleMarkdownHtml = (html) => {
 const getTransporter = () => {
     // Allow overriding via env for production environments that block 465
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    const port = Number(process.env.SMTP_PORT || 465); // 465 (SSL) or 587 (STARTTLS)
-    const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465;
+    const port = 465;
+    //const port = Number(process.env.SMTP_PORT || 465); // 465 (SSL) or 587 (STARTTLS)
+    const secure = true;
+    //const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465;
 
     return nodemailer.createTransport({
         host,
         port,
-        secure, // true for 465, false for 587
+        //secure: true, // true for 465, false for 587
+        secure,
         requireTLS: !secure, // enforce STARTTLS on 587
         auth: {
             user: process.env.EMAIL_USER,
