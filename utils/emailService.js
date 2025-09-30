@@ -25,44 +25,29 @@ const styleMarkdownHtml = (html) => {
 
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
-    // Allow overriding SMTP settings via environment for production
+    // Allow overriding via env for production environments that block 465
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    const port = Number(process.env.SMTP_PORT || 465);
-    // If SMTP_SECURE is explicitly provided, respect it; otherwise infer from port
-    const secure = (
-        typeof process.env.SMTP_SECURE === 'string'
-            ? ['true', '1', 'yes'].includes(process.env.SMTP_SECURE.toLowerCase())
-            : port === 465
-    );
+    const port = Number(process.env.SMTP_PORT || 465); // 465 (SSL) or 587 (STARTTLS)
+    const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465;
 
-    const transporter = nodemailer.createTransport({
+    return nodemailer.createTransport({
         host,
         port,
-        secure,
-        pool: true,
-        maxConnections: 3,
-        maxMessages: 50,
+        secure, // true for 465, false for 587
+        requireTLS: !secure, // enforce STARTTLS on 587
         auth: {
             user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASSWORD,
+            pass: process.env.EMAIL_PASSWORD
         },
-        // More robust timeouts to avoid hanging in certain hosts
-        connectionTimeout: Number(process.env.SMTP_CONN_TIMEOUT || 20000), // 20s
-        greetingTimeout: Number(process.env.SMTP_GREET_TIMEOUT || 15000),  // 15s
-        socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 30000),   // 30s
-        // TLS controls; default to secure behavior, allow override if needed
-        tls: {
-            rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED
-                ? !['false', '0', 'no'].includes(process.env.SMTP_REJECT_UNAUTHORIZED.toLowerCase())
-                : true,
-            // Some providers require SNI servername
-            servername: host,
-        },
+        // Add generous timeouts for slow provider handshakes
+        connectionTimeout: 20000,
+        greetingTimeout: 20000,
+        socketTimeout: 30000,
+        // Help some providers with TLS SNI
+        tls: { servername: host },
         debug: process.env.NODE_ENV === 'development',
-        logger: process.env.NODE_ENV === 'development',
+        logger: process.env.NODE_ENV === 'development'
     });
-
-    return transporter;
 };
 
 /**
@@ -376,7 +361,14 @@ const sendMarkdownReportEmail = async (email, subject, markdownContent) => {
 
         // Get transporter instance
         const transporter = getTransporter();
-        await transporter.verify();
+        // Do not block sendMail in production if verify times out; proceed with warning
+        try {
+            if (process.env.NODE_ENV !== 'production') {
+                await transporter.verify();
+            }
+        } catch (verr) {
+            console.warn('SMTP verify warning (continuing to send):', verr?.code || verr?.message);
+        }
         
         // Extract user's first name from email
         const firstName = email.split('@')[0].split('.')[0];
