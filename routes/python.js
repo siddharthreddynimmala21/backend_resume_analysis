@@ -238,20 +238,66 @@ Make it detailed and professional, suitable for use in resume analysis.`;
             const output = dataString.trim();
             console.log(`Python script output length: ${output.length} characters`);
 
+            // Validate email configuration before attempting to send
+            if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+                console.error('❌ EMAIL CONFIGURATION MISSING!');
+                console.error('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'NOT SET');
+                console.error('EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? 'Set' : 'NOT SET');
+                console.error('Please configure EMAIL_USER and EMAIL_PASSWORD in your .env file');
+                console.error('Skipping email send - user will not receive report via email');
+                
+                hasResponded = true;
+                return res.status(200).json({ 
+                    message: output,
+                    warnings: errorString.trim() || undefined,
+                    emailSent: false,
+                    emailError: 'Email service not configured. Please configure EMAIL_USER and EMAIL_PASSWORD in .env file.',
+                    input: {
+                        currentRole,
+                        targetRole,
+                        experience,
+                        jobDescription: finalJobDescription.substring(0, 100) + '...', // Truncate for logging
+                        generatedJobDescription: generateJobDescription === 'true'
+                    },
+                    success: true
+                });
+            }
+
             // Build markdown report
             const markdownReport = `# Resume Analysis Report\n\n${output}`;
+            
             // Attempt to send the report email before responding
+            let emailSent = false;
+            let emailError = null;
+            
             try {
-                await sendMarkdownReportEmail(req.user.email, 'Your Resume Analysis Report', markdownReport);
-                console.log(`Report email successfully sent to ${req.user.email}`);
+                console.log(`Attempting to send email to: ${req.user.email}`);
+                const emailResult = await sendMarkdownReportEmail(req.user.email, 'Your Resume Analysis Report', markdownReport);
+                
+                if (emailResult) {
+                    emailSent = true;
+                    console.log(`✅ Report email successfully sent to ${req.user.email}`);
+                } else {
+                    emailError = 'Email service returned false - check server logs for details';
+                    console.error(`❌ Email sending failed for ${req.user.email} - service returned false`);
+                }
             } catch (emailErr) {
-                console.error('Failed to send report email:', emailErr);
+                emailError = emailErr.message || 'Unknown email error';
+                console.error('❌ Failed to send report email:', emailErr);
+                console.error('Email error details:', {
+                    message: emailErr.message,
+                    code: emailErr.code,
+                    command: emailErr.command
+                });
             }
+            
             hasResponded = true;
-            // Return the output from the Python script
+            // Return the output from the Python script with email status
             return res.status(200).json({ 
                 message: output,
                 warnings: errorString.trim() || undefined,
+                emailSent: emailSent,
+                emailError: emailError,
                 input: {
                     currentRole,
                     targetRole,
