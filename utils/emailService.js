@@ -25,29 +25,38 @@ const styleMarkdownHtml = (html) => {
 
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
-    // Allow overriding via env for production environments that block 465
+    // Use port 587 (STARTTLS) for better compatibility with cloud platforms like Render
+    // Port 465 (SSL) is often blocked by cloud providers
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    const port = 465;
-    //const port = Number(process.env.SMTP_PORT || 465); // 465 (SSL) or 587 (STARTTLS)
-    const secure = true;
-    //const secure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465;
+    const port = Number(process.env.SMTP_PORT || 587); // 587 for STARTTLS (cloud-friendly)
+    const secure = process.env.SMTP_SECURE === 'true' ? true : false; // false for 587, true for 465
+
+    console.log('📧 Email transporter config:', {
+        host,
+        port,
+        secure,
+        user: process.env.EMAIL_USER ? process.env.EMAIL_USER.substring(0, 3) + '***' : 'NOT SET'
+    });
 
     return nodemailer.createTransport({
         host,
         port,
-        //secure: true, // true for 465, false for 587
-        secure,
-        requireTLS: !secure, // enforce STARTTLS on 587
+        secure, // false for 587 (STARTTLS), true for 465 (SSL)
+        requireTLS: true, // Always enforce TLS
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASSWORD
         },
-        // Add generous timeouts for slow provider handshakes
-        connectionTimeout: 20000,
-        greetingTimeout: 20000,
-        socketTimeout: 30000,
-        // Help some providers with TLS SNI
-        tls: { servername: host },
+        // Increase timeouts for cloud environments with slower connections
+        connectionTimeout: 60000, // 60 seconds
+        greetingTimeout: 30000,   // 30 seconds
+        socketTimeout: 60000,     // 60 seconds
+        // TLS configuration for better compatibility
+        tls: {
+            servername: host,
+            ciphers: 'SSLv3',
+            rejectUnauthorized: true
+        },
         debug: process.env.NODE_ENV === 'development',
         logger: process.env.NODE_ENV === 'development'
     });

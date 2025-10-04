@@ -5,13 +5,23 @@ The Resume Analyzer feature sends analysis reports to users via email. This requ
 
 ## Required Environment Variables
 
-Add these variables to your `backend/.env` file:
+Add these variables to your `backend/.env` file (or environment variables in Render/cloud platform):
 
 ```env
 # Email Service Configuration
 EMAIL_USER=your_email@gmail.com
 EMAIL_PASSWORD=your_app_specific_password
+
+# Optional: Override default SMTP settings (default: Gmail on port 587)
+# SMTP_HOST=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_SECURE=false  # false for port 587 (STARTTLS), true for port 465 (SSL)
 ```
+
+**Note for Cloud Deployments (Render, Heroku, etc.):**
+- The system uses **port 587 with STARTTLS** by default (cloud-friendly)
+- Port 465 is often blocked by cloud providers
+- Configure environment variables in your platform's dashboard
 
 ## Step-by-Step Setup for Gmail
 
@@ -38,10 +48,41 @@ EMAIL_PASSWORD=xxxx xxxx xxxx xxxx  # Replace with your generated app password
 After updating `.env`, restart your Node.js server for changes to take effect:
 
 ```bash
-# Stop the server (Ctrl+C) and restart
+# Local Development
 cd backend
 npm start
 ```
+
+## Render Deployment Setup
+
+### Setting Environment Variables on Render
+
+1. **Go to your Render Dashboard**
+   - Navigate to your web service
+   - Click on "Environment" in the left sidebar
+
+2. **Add Environment Variables:**
+   ```
+   Key: EMAIL_USER
+   Value: 15promaxphotos@gmail.com
+   
+   Key: EMAIL_PASSWORD
+   Value: [your 16-character app password]
+   ```
+
+3. **Save and Redeploy:**
+   - Click "Save Changes"
+   - Render will automatically redeploy with new variables
+
+4. **Verify Configuration:**
+   - Check logs for: `📧 Email transporter config: { host: 'smtp.gmail.com', port: 587, ... }`
+   - Should show `port: 587` (not 465)
+
+### Important for Render Users
+- ✅ Port 587 (STARTTLS) is now the default - works on Render
+- ❌ Port 465 (SSL) was previously used - often blocked on cloud platforms
+- 🔒 Always use environment variables (not .env files) on Render
+- ⏱️ Increased timeouts (60s) for cloud network latency
 
 ## Testing Email Configuration
 
@@ -60,9 +101,13 @@ You can verify email configuration by checking server logs when running a resume
 - **Cause:** Incorrect app password or 2FA not enabled
 - **Solution:** Regenerate app password and verify 2FA is active
 
-#### Connection Timeout
-- **Cause:** Firewall or network blocking SMTP port 465
-- **Solution:** Check firewall settings or try different network
+#### Connection Timeout (ETIMEDOUT)
+- **Cause:** Cloud platform blocking SMTP ports or slow network
+- **Solution:** 
+  - System now uses port 587 by default (cloud-friendly)
+  - Verify EMAIL_USER and EMAIL_PASSWORD are set in Render environment variables
+  - Check Render logs for "📧 Email transporter config" to verify settings
+  - If still failing, try using a service like SendGrid or AWS SES instead
 
 #### Email Not Received
 - **Cause:** Email in spam folder
