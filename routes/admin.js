@@ -10,7 +10,7 @@ const router = express.Router();
 router.get('/users', auth, requireAdmin, async (req, res) => {
   try {
     const { search = '', page = 1, limit = 10 } = req.query;
-    const q = { isVerified: true, hasPassword: true };
+    const q = {};
     if (search) {
       q.email = { $regex: new RegExp(search, 'i') };
     }
@@ -46,7 +46,7 @@ router.get('/metrics/timeseries', auth, requireAdmin, async (req, res) => {
 
     if (metric === 'signups') {
       const agg = await User.aggregate([
-        { $match: { createdAt: { $gte: start, $lte: end }, isVerified: true, hasPassword: true } },
+        { $match: { createdAt: { $gte: start, $lte: end } } },
         { $addFields: { date: '$createdAt' } },
         { $group: { _id: dateFormat, value: { $sum: 1 } } },
         { $project: { _id: 0, key: '$_id', value: 1 } },
@@ -282,10 +282,12 @@ router.get('/metrics/overview', auth, requireAdmin, async (req, res) => {
       totalUsers,
       newUsers7d,
       newUsers30d,
+      verifiedUsers,
     ] = await Promise.all([
-      User.countDocuments({ isVerified: true, hasPassword: true }),
-      User.countDocuments({ createdAt: { $gte: weekAgo }, isVerified: true, hasPassword: true }),
-      User.countDocuments({ createdAt: { $gte: monthAgo }, isVerified: true, hasPassword: true }),
+      User.countDocuments({}),
+      User.countDocuments({ createdAt: { $gte: weekAgo } }),
+      User.countDocuments({ createdAt: { $gte: monthAgo } }),
+      User.countDocuments({ isVerified: true }),
     ]);
 
     // Sum resume uploads from users
@@ -372,6 +374,7 @@ router.get('/metrics/overview', auth, requireAdmin, async (req, res) => {
       totalUsers,
       newUsers7d,
       newUsers30d,
+      verifiedUsers,
       resumeUploadsTotal,
       totalInterviews,
       avgRoundsPassedPerInterview,

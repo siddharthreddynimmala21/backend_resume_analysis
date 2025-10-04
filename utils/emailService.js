@@ -25,40 +25,18 @@ const styleMarkdownHtml = (html) => {
 
 // Create a function to get transporter - ensures env variables are loaded
 const getTransporter = () => {
-    // Use port 587 (STARTTLS) for better compatibility with cloud platforms like Render
-    // Port 465 (SSL) is often blocked by cloud providers
-    const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    const port = Number(process.env.SMTP_PORT || 587); // 587 for STARTTLS (cloud-friendly)
-    const secure = process.env.SMTP_SECURE === 'true' ? true : false; // false for 587, true for 465
-
-    console.log('📧 Email transporter config:', {
-        host,
-        port,
-        secure,
-        user: process.env.EMAIL_USER ? process.env.EMAIL_USER.substring(0, 3) + '***' : 'NOT SET'
-    });
-
+    // Gmail SMTP configuration
     return nodemailer.createTransport({
-        host,
-        port,
-        secure, // false for 587 (STARTTLS), true for 465 (SSL)
-        requireTLS: true, // Always enforce TLS
+        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true, // Use SSL
         auth: {
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASSWORD
         },
-        // Increase timeouts for cloud environments with slower connections
-        connectionTimeout: 60000, // 60 seconds
-        greetingTimeout: 30000,   // 30 seconds
-        socketTimeout: 60000,     // 60 seconds
-        // TLS configuration for better compatibility
-        tls: {
-            servername: host,
-            ciphers: 'SSLv3',
-            rejectUnauthorized: true
-        },
-        debug: process.env.NODE_ENV === 'development',
-        logger: process.env.NODE_ENV === 'development'
+        debug: process.env.NODE_ENV === 'development', // Enable debug logs only in development
+        logger: process.env.NODE_ENV === 'development' // Log to console only in development
     });
 };
 
@@ -373,14 +351,7 @@ const sendMarkdownReportEmail = async (email, subject, markdownContent) => {
 
         // Get transporter instance
         const transporter = getTransporter();
-        // Do not block sendMail in production if verify times out; proceed with warning
-        try {
-            if (process.env.NODE_ENV !== 'production') {
-                await transporter.verify();
-            }
-        } catch (verr) {
-            console.warn('SMTP verify warning (continuing to send):', verr?.code || verr?.message);
-        }
+        await transporter.verify();
         
         // Extract user's first name from email
         const firstName = email.split('@')[0].split('.')[0];
