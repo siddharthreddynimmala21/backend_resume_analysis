@@ -12,6 +12,9 @@ import resumeRoutes from './routes/resume.js';
 import aiInterviewRouter from './routes/aiInterview.js';
 import aiInterviewSubmitRouter from './routes/aiInterviewSubmit.js';
 import aiInterviewValidateRouter from './routes/aiInterviewValidate.js';
+import resumeInterviewRouter from './routes/resumeInterview.js';
+import resumeInterviewSubmitRouter from './routes/resumeInterviewSubmit.js';
+import resumeInterviewValidateRouter from './routes/resumeInterviewValidate.js';
 import reportRouter from './routes/report.js';
 import adminRouter from './routes/admin.js';
 
@@ -19,9 +22,9 @@ import adminRouter from './routes/admin.js';
 const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD', 'GEMINI_API_KEY', 'GROQ_API_KEY'];
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingVars.length > 0) {
-  console.error('Missing required environment variables:', missingVars.join(', '));
-  console.error('Please check your .env file');
-  process.exit(1); // Exit if critical API keys are missing
+    console.error('Missing required environment variables:', missingVars.join(', '));
+    console.error('Please check your .env file');
+    process.exit(1); // Exit if critical API keys are missing
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -42,12 +45,12 @@ app.use(express.json({ limit: '5mb' }));
 // Enhanced logging middleware for debugging
 app.use((req, res, next) => {
     //console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    
+
     // Only log CORS preflight requests in development
     if (req.method === 'OPTIONS' && process.env.NODE_ENV === 'development') {
         //console.log('CORS preflight request detected');
     }
-    
+
     next();
 });
 
@@ -85,12 +88,15 @@ app.use('/api/python', pythonRouter);
 app.use('/api/ai-interview', aiInterviewRouter);
 app.use('/api/ai-interview', aiInterviewSubmitRouter);
 app.use('/api/ai-interview', aiInterviewValidateRouter);
+app.use('/api/resume-interview', resumeInterviewRouter);
+app.use('/api/resume-interview', resumeInterviewSubmitRouter);
+app.use('/api/resume-interview', resumeInterviewValidateRouter);
 app.use('/api/report', reportRouter);
 app.use('/api/admin', adminRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {
-  return res.status(200).json({ message: 'pong' });
+    return res.status(200).json({ message: 'pong' });
 });
 
 // Error handling
