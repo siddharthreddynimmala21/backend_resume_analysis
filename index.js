@@ -17,6 +17,7 @@ import resumeInterviewSubmitRouter from './routes/resumeInterviewSubmit.js';
 import resumeInterviewValidateRouter from './routes/resumeInterviewValidate.js';
 import reportRouter from './routes/report.js';
 import adminRouter from './routes/admin.js';
+import interviewAnalyticsRouter from './routes/interviewAnalytics.js';
 
 // Validate critical environment variables
 const requiredEnvVars = ['JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD', 'GEMINI_API_KEY', 'GROQ_API_KEY'];
@@ -95,6 +96,7 @@ app.use('/api/resume-interview', resumeInterviewSubmitRouter);
 app.use('/api/resume-interview', resumeInterviewValidateRouter);
 app.use('/api/report', reportRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/interview-analytics', interviewAnalyticsRouter);
 
 // Top-level ping route for uptime monitoring
 app.get('/ping', (req, res) => {
