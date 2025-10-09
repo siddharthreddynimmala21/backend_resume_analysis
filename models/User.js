@@ -9,11 +9,21 @@ const userSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
   },
+  firstName: {
+    type: String,
+    required: false,
+    trim: true,
+  },
+  lastName: {
+    type: String,
+    required: false,
+    trim: true,
+  },
   password: {
     type: String,
     required: false,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         // Only validate if password is being set and not empty
         if (v !== undefined && v !== null && v !== '') {
           return v.length >= 6;
@@ -26,7 +36,7 @@ const userSchema = new mongoose.Schema({
   otp: {
     code: String,
     expiresAt: Date,
-  },  isVerified: {
+  }, isVerified: {
     type: Boolean,
     default: false,
   },

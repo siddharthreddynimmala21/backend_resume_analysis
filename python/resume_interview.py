@@ -317,120 +317,181 @@ def build_resume_interview_graph() -> StateGraph:
         # Focus-specific prompts
         prompts = {
             "skills": """
-            Generate interview questions focused on SKILLS assessment.
+            You are an experienced technical interviewer. Generate interview questions focused on SKILLS assessment based on the candidate's actual resume.
             
-            Candidate's Skills: {focus_content}
-            Job Requirements: {job_requirements}
-            Gap Analysis: {gap_analysis}
-            Strategy: {question_strategy}
+            CANDIDATE'S SKILLS FROM RESUME:
+            {focus_content}
+            
+            JOB REQUIREMENTS:
+            {job_requirements}
+            
+            TARGET ROLE: {target_role}
+            EXPERIENCE: {experience} years
             
             INSTRUCTIONS:
-            - Focus ONLY on technical and soft skills evaluation
-            - Create questions that validate claimed skills with practical scenarios
-            - Include questions that assess skill gaps identified in analysis
-            - Test depth of knowledge in claimed expertise areas
-            - Evaluate problem-solving approach using mentioned skills
+            - Create questions that test SPECIFIC technologies and skills from their resume
+            - Make questions sound like a real interviewer who has read their resume
+            - Test practical knowledge relevant to their experience level
+            - Generate diverse, non-repetitive questions
+            - Each question should test different concepts/technologies
             
             CRITICAL MCQ REQUIREMENTS:
-            - Each MCQ must have EXACTLY ONE correct answer - no ambiguity
-            - The other 3 options must be clearly incorrect or less optimal
-            - Avoid questions where multiple answers could be considered correct
-            - Make sure the correct answer is definitively the best choice
-            - Double-check that the answer you mark as correct is actually correct
-            - Avoid subjective questions - focus on factual, technical knowledge
+            - Each MCQ must have EXACTLY ONE correct answer
+            - Options must be realistic and technically accurate
+            - Test specific technical concepts, not general knowledge
+            - Make questions challenging but appropriate for their experience level
             
-            Output JSON format ONLY (no prose). Return exactly one JSON object:
+            Generate EXACTLY 5 MCQ questions and 3 descriptive questions.
+            
+            Return ONLY valid JSON in this exact format:
             {{
               "mcq_questions": [
                 {{
-                  "question": "Based on your React experience, what is the correct way to handle state updates?",
-                  "options": ["A. Direct mutation", "B. Using setState", "C. Global variables", "D. DOM manipulation"],
+                  "question": "What is the primary purpose of React hooks?",
+                  "options": ["A. To replace class components entirely", "B. To manage state and side effects in functional components", "C. To improve performance only", "D. To handle routing"],
                   "answer": "B"
                 }},
-                ... 5 items total ...
+                {{
+                  "question": "In JavaScript, what does the 'this' keyword refer to in an arrow function?",
+                  "options": ["A. The global object", "B. The function itself", "C. The lexical scope where it was defined", "D. Undefined"],
+                  "answer": "C"
+                }},
+                {{
+                  "question": "Which HTTP status code indicates a successful POST request that created a new resource?",
+                  "options": ["A. 200 OK", "B. 201 Created", "C. 202 Accepted", "D. 204 No Content"],
+                  "answer": "B"
+                }},
+                {{
+                  "question": "What is the main advantage of using CSS Grid over Flexbox?",
+                  "options": ["A. Better browser support", "B. Simpler syntax", "C. Two-dimensional layout control", "D. Faster rendering"],
+                  "answer": "C"
+                }},
+                {{
+                  "question": "In Git, what does 'git rebase' do?",
+                  "options": ["A. Creates a new branch", "B. Merges branches with a merge commit", "C. Replays commits on top of another base", "D. Deletes the current branch"],
+                  "answer": "C"
+                }}
               ],
               "desc_questions": [
-                "Describe how you implemented authentication in your React project...",
-                "Explain your approach to state management in complex applications...",
-                "How would you optimize performance in a React application based on your experience..."
+                "Tell me about a challenging technical problem you solved. What was your approach and what technologies did you use?",
+                "Describe your experience with [specific technology from resume]. How have you used it in your projects?",
+                "How do you stay updated with new technologies and best practices in your field?"
               ]
             }}
             """,
             
             "projects": """
-            Generate interview questions focused on PROJECT experience.
+            You are an experienced technical interviewer. Generate interview questions focused on PROJECT experience based on the candidate's actual projects.
             
-            Candidate's Projects: {focus_content}
-            Job Requirements: {job_requirements}
-            Gap Analysis: {gap_analysis}
-            Strategy: {question_strategy}
+            CANDIDATE'S PROJECTS:
+            {focus_content}
+            
+            JOB REQUIREMENTS:
+            {job_requirements}
+            
+            TARGET ROLE: {target_role}
+            EXPERIENCE: {experience} years
             
             INSTRUCTIONS:
-            - Focus ONLY on project-based scenarios and experiences
-            - Ask about specific projects mentioned in resume
-            - Explore technical decisions, challenges, and solutions
-            - Assess project management and collaboration skills
-            - Evaluate learning and adaptation from project experiences
-            - Connect project experience to target role requirements
+            - Reference their actual project names and technologies when possible
+            - Ask about technical decisions, architecture, and implementation
+            - Test project management and problem-solving skills
+            - Make questions sound like a real interviewer who studied their resume
+            - Generate diverse questions covering different aspects of project work
             
-            CRITICAL MCQ REQUIREMENTS:
-            - Each MCQ must have EXACTLY ONE correct answer - no ambiguity
-            - Focus on project management, technical decisions, and best practices
-            - Questions should relate to actual projects mentioned in resume
+            Generate EXACTLY 5 MCQ questions and 3 descriptive questions.
             
-            Output JSON format ONLY (no prose). Return exactly one JSON object:
+            Return ONLY valid JSON in this exact format:
             {{
               "mcq_questions": [
                 {{
-                  "question": "In your e-commerce project, what would be the best approach for handling payment processing?",
-                  "options": ["A. Store card details locally", "B. Use a payment gateway", "C. Process payments manually", "D. Skip payment validation"],
+                  "question": "When implementing a REST API, which HTTP method should be used for updating a partial resource?",
+                  "options": ["A. POST", "B. PUT", "C. PATCH", "D. UPDATE"],
+                  "answer": "C"
+                }},
+                {{
+                  "question": "What is the main benefit of using a microservices architecture?",
+                  "options": ["A. Simpler deployment", "B. Better scalability and maintainability", "C. Reduced code complexity", "D. Lower infrastructure costs"],
                   "answer": "B"
                 }},
-                ... 5 items total ...
+                {{
+                  "question": "In agile development, what is the purpose of a sprint retrospective?",
+                  "options": ["A. Plan the next sprint", "B. Review completed work", "C. Identify improvements for the team process", "D. Estimate story points"],
+                  "answer": "C"
+                }},
+                {{
+                  "question": "Which database approach is best for handling complex relationships between entities?",
+                  "options": ["A. NoSQL document store", "B. Key-value store", "C. Relational database", "D. Graph database"],
+                  "answer": "D"
+                }},
+                {{
+                  "question": "What is the primary purpose of containerization in software deployment?",
+                  "options": ["A. Improve application performance", "B. Ensure consistent environments across deployments", "C. Reduce code size", "D. Eliminate the need for testing"],
+                  "answer": "B"
+                }}
               ],
               "desc_questions": [
-                "Walk me through the architecture of your most complex project...",
-                "Describe a major challenge you faced in one of your projects and how you solved it...",
-                "How did you ensure code quality and maintainability in your team projects..."
+                "Walk me through one of your most challenging projects. What was the problem you were solving and how did you approach it?",
+                "Tell me about a time when you had to make a difficult technical decision in a project. What factors did you consider?",
+                "Describe how you handled project requirements that changed during development. What was your process?"
               ]
             }}
             """,
             
             "work_experience": """
-            Generate interview questions focused on WORK EXPERIENCE.
+            You are an experienced HR interviewer. Generate interview questions focused on WORK EXPERIENCE based on the candidate's actual work history.
             
-            Candidate's Experience: {focus_content}
-            Job Requirements: {job_requirements}
-            Gap Analysis: {gap_analysis}
-            Strategy: {question_strategy}
+            CANDIDATE'S WORK EXPERIENCE:
+            {focus_content}
+            
+            JOB REQUIREMENTS:
+            {job_requirements}
+            
+            TARGET ROLE: {target_role}
+            EXPERIENCE: {experience} years
             
             INSTRUCTIONS:
-            - Focus ONLY on work experience, roles, and responsibilities
-            - Explore career progression and role transitions
-            - Assess leadership, teamwork, and professional growth
-            - Evaluate handling of workplace challenges and conflicts
-            - Connect past experience to target role requirements
-            - Assess cultural fit and work style preferences
+            - Reference their actual companies and roles when possible
+            - Ask about career progression, leadership, and teamwork
+            - Test professional skills and workplace scenarios
+            - Make questions sound like a real interviewer who studied their background
+            - Generate diverse questions covering different aspects of work experience
             
-            CRITICAL MCQ REQUIREMENTS:
-            - Each MCQ must have EXACTLY ONE correct answer - no ambiguity
-            - Focus on workplace scenarios, leadership, and professional situations
-            - Questions should relate to actual work experience mentioned
+            Generate EXACTLY 5 MCQ questions and 3 descriptive questions.
             
-            Output JSON format ONLY (no prose). Return exactly one JSON object:
+            Return ONLY valid JSON in this exact format:
             {{
               "mcq_questions": [
                 {{
-                  "question": "As a team lead, what's the best approach when a team member consistently misses deadlines?",
-                  "options": ["A. Ignore the issue", "B. Have a private discussion to understand and address the root cause", "C. Publicly criticize them", "D. Immediately escalate to HR"],
+                  "question": "When facing a tight deadline with competing priorities, what is the most effective approach?",
+                  "options": ["A. Work overtime to complete everything", "B. Communicate with stakeholders to prioritize tasks", "C. Delegate everything to team members", "D. Focus only on the most visible tasks"],
                   "answer": "B"
                 }},
-                ... 5 items total ...
+                {{
+                  "question": "How should you handle a situation where a team member consistently misses deadlines?",
+                  "options": ["A. Report them to management immediately", "B. Do their work for them", "C. Have a private conversation to understand and address the issue", "D. Ignore it and hope it improves"],
+                  "answer": "C"
+                }},
+                {{
+                  "question": "What is the best way to handle constructive criticism from your manager?",
+                  "options": ["A. Defend your actions immediately", "B. Listen actively and ask clarifying questions", "C. Agree without understanding", "D. Dismiss it as unfair"],
+                  "answer": "B"
+                }},
+                {{
+                  "question": "When working on a cross-functional team, what is most important for success?",
+                  "options": ["A. Being the most technically skilled", "B. Taking charge of all decisions", "C. Clear communication and collaboration", "D. Working independently"],
+                  "answer": "C"
+                }},
+                {{
+                  "question": "How should you approach learning a new technology required for your role?",
+                  "options": ["A. Wait for formal training", "B. Proactively learn through multiple resources and practice", "C. Ask colleagues to do the work instead", "D. Claim you already know it"],
+                  "answer": "B"
+                }}
               ],
               "desc_questions": [
-                "Describe a time when you had to lead a team through a challenging project...",
-                "Tell me about a conflict you resolved in your previous workplace...",
-                "How did you adapt when transitioning from individual contributor to a leadership role..."
+                "Tell me about your career progression and what motivated your transition between roles.",
+                "Describe a challenging workplace situation you faced and how you handled it professionally.",
+                "How do you approach working with difficult team members or stakeholders?"
               ]
             }}
             """
@@ -439,11 +500,86 @@ def build_resume_interview_graph() -> StateGraph:
         prompt_template = prompts.get(focus_area, prompts["skills"])
         prompt = ChatPromptTemplate.from_template(prompt_template)
         
-        result = llm.predict(prompt.format(**state))
-        data = _safe_json(result)
-        questions = normalize_output(data)
+        try:
+            result = llm.predict(prompt.format(**state))
+            
+            # Simple JSON parsing with fallback
+            try:
+                if "```json" in result:
+                    json_part = result.split("```json")[1].split("```")[0]
+                    data = json.loads(json_part)
+                elif "```" in result:
+                    json_part = result.split("```")[1]
+                    if json_part.startswith("json"):
+                        json_part = json_part[4:]
+                    data = json.loads(json_part)
+                else:
+                    data = json.loads(result)
+            except:
+                # If JSON parsing fails, return error
+                state["questions"] = {
+                    "error": "Failed to parse questions from AI response",
+                    "raw_response": result[:500]
+                }
+                return state
+
+            # Validate structure
+            if not isinstance(data, dict):
+                state["questions"] = {"error": "Invalid response format"}
+                return state
+                
+            mcq_questions = data.get("mcq_questions", [])
+            desc_questions = data.get("desc_questions", [])
+            
+            # Validate MCQ questions
+            validated_mcq = []
+            for mcq in mcq_questions[:5]:  # Take only first 5
+                if not isinstance(mcq, dict):
+                    continue
+                question = mcq.get("question", "").strip()
+                options = mcq.get("options", [])
+                answer = mcq.get("answer", "A").strip().upper()
+                
+                if not question or not options or len(options) != 4:
+                    continue
+                    
+                if answer not in ["A", "B", "C", "D"]:
+                    answer = "A"
+                    
+                validated_mcq.append({
+                    "question": question,
+                    "options": options,
+                    "answer": answer
+                })
+            
+            # Validate descriptive questions
+            validated_desc = []
+            for desc in desc_questions[:3]:  # Take only first 3
+                if isinstance(desc, str) and desc.strip():
+                    validated_desc.append(desc.strip())
+            
+            # Ensure we have the right number of questions
+            while len(validated_mcq) < 5:
+                validated_mcq.append({
+                    "question": f"Sample technical question {len(validated_mcq) + 1}",
+                    "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
+                    "answer": "A"
+                })
+                
+            while len(validated_desc) < 3:
+                validated_desc.append(f"Describe your experience with relevant technologies for this role.")
+            
+            state["questions"] = {
+                "mcq_questions": validated_mcq,
+                "desc_questions": validated_desc
+            }
+            
+        except Exception as e:
+            state["questions"] = {
+                "error": f"Question generation failed: {str(e)}",
+                "fallback": True
+            }
         
-        state["questions"] = questions
         return state
 
     # Build the graph
@@ -468,135 +604,6 @@ def build_resume_interview_graph() -> StateGraph:
     
     return sg.compile()
 
-
-def normalize_output(parsed):
-    """Normalize and validate the question output format."""
-    
-    def is_option_like(s: str) -> bool:
-        s = (s or '').strip()
-        return len(s) > 2 and s[1] == '.' and s[0].upper() in ['A', 'B', 'C', 'D']
-
-    # Initialize canonical structure
-    out = {"mcq_questions": [], "desc_questions": []}
-
-    # If parsed is dict and appears well-formed
-    if isinstance(parsed, dict):
-        mcqs = parsed.get("mcq_questions")
-        descs = parsed.get("desc_questions")
-        
-        if isinstance(mcqs, list):
-            for item in mcqs:
-                if not isinstance(item, dict):
-                    continue
-                q = str(item.get("question", "")).strip()
-                q = q.replace("```", "").strip()
-                
-                opts = item.get("options", [])
-                ans = str(item.get("answer", "")).strip().upper()
-                
-                if not isinstance(opts, list):
-                    opts = []
-                
-                # Keep only first 4, enforce labels A-D
-                opts = [str(o) for o in opts if isinstance(o, str)]
-                labeled = []
-                for i, o in enumerate(opts[:4]):
-                    label = chr(65 + i)
-                    o = str(o).replace("```", "").strip()
-                    if is_option_like(o):
-                        labeled.append(o)
-                    else:
-                        labeled.append(f"{label}. {o}")
-                
-                # Pad if fewer than 4
-                while len(labeled) < 4:
-                    label = chr(65 + len(labeled))
-                    labeled.append(f"{label}. Option")
-                
-                # Validate answer
-                if ans not in ["A", "B", "C", "D"]:
-                    ans = "A"
-                
-                if q:
-                    out["mcq_questions"].append({
-                        "question": q,
-                        "options": labeled[:4],
-                        "answer": ans
-                    })
-        
-        if isinstance(descs, list):
-            for d in descs:
-                if not isinstance(d, str):
-                    continue
-                s = d.replace("```", "").strip()
-                
-                if not s or len(s) < 8:
-                    continue
-                if is_option_like(s):
-                    continue
-                
-                out["desc_questions"].append(s)
-
-    # Enforce counts exactly: 5 MCQ, 3 desc
-    out["mcq_questions"] = out["mcq_questions"][:5]
-    out["desc_questions"] = out["desc_questions"][:3]
-
-    # Ensure minimum counts
-    while len(out["desc_questions"]) < 3:
-        out["desc_questions"].append("Describe a relevant experience from your background.")
-
-    while len(out["mcq_questions"]) < 5:
-        out["mcq_questions"].append({
-            "question": "Which of the following best aligns with your experience?",
-            "options": ["A. Option", "B. Option", "C. Option", "D. Option"],
-            "answer": "A"
-        })
-
-    # Randomize MCQ options
-    import random as _rnd
-    
-    def _strip_label(opt: str) -> str:
-        s = (opt or "").strip()
-        if len(s) >= 3 and s[1] == '.' and s[0].upper() in ['A','B','C','D']:
-            return s[3:].strip()
-        return s
-
-    randomized_mcq = []
-    for m in out["mcq_questions"]:
-        opts = m.get("options", [])
-        ans_letter = m.get("answer", "A").strip().upper()
-        
-        # Extract plain texts and identify correct text
-        texts = [_strip_label(o) for o in opts[:4]]
-        try:
-            correct_idx = ["A","B","C","D"].index(ans_letter)
-        except ValueError:
-            correct_idx = 0
-        
-        correct_text = texts[correct_idx] if texts else ""
-        
-        # Shuffle texts
-        shuffled = texts[:]
-        _rnd.shuffle(shuffled)
-        
-        # Relabel
-        labeled = []
-        new_correct_idx = 0
-        for i, t in enumerate(shuffled[:4]):
-            label = chr(65 + i)
-            labeled.append(f"{label}. {t}")
-            if t == correct_text and correct_text != "":
-                new_correct_idx = i
-        
-        new_ans = chr(65 + new_correct_idx)
-        randomized_mcq.append({
-            "question": str(m.get("question","")),
-            "options": labeled[:4],
-            "answer": new_ans
-        })
-    
-    out["mcq_questions"] = randomized_mcq[:5]
-    return out
 
 
 def generate_job_description(target_role: str, experience: str, current_role: str) -> str:

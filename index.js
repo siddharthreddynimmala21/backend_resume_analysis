@@ -81,7 +81,9 @@ app.get('/test', (req, res) => {
 import authRouter from './routes/auth.js';
 import chatRouter from './routes/chat.js';
 import pythonRouter from './routes/python.js';
+import profileRouter from './routes/profile.js';
 app.use('/api/auth', authRouter);
+app.use('/api/profile', profileRouter);
 app.use('/api/resume', resumeRoutes);
 app.use('/api/chat', chatRouter);
 app.use('/api/python', pythonRouter);
