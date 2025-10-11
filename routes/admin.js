@@ -62,31 +62,35 @@ router.get('/metrics/timeseries', auth, requireAdmin, async (req, res) => {
       // 3) else session createdAt (if present)
       const agg = await InterviewSession.aggregate([
         { $unwind: '$interviews' },
-        { $project: {
-          interviews: 1,
-          createdAt: 1,
-          roundDates: {
-            $filter: {
-              input: {
-                $map: {
-                  input: { $ifNull: ['$interviews.rounds', []] },
-                  as: 'r',
-                  in: '$$r.createdAt'
-                }
-              },
-              as: 'd',
-              cond: { $ne: ['$$d', null] }
+        {
+          $project: {
+            interviews: 1,
+            createdAt: 1,
+            roundDates: {
+              $filter: {
+                input: {
+                  $map: {
+                    input: { $ifNull: ['$interviews.rounds', []] },
+                    as: 'r',
+                    in: '$$r.createdAt'
+                  }
+                },
+                as: 'd',
+                cond: { $ne: ['$$d', null] }
+              }
             }
           }
-        } },
-        { $addFields: {
-          interviewDate: {
-            $ifNull: [
-              { $min: '$roundDates' },
-              { $ifNull: ['$interviews.createdAt', '$createdAt'] }
-            ]
+        },
+        {
+          $addFields: {
+            interviewDate: {
+              $ifNull: [
+                { $min: '$roundDates' },
+                { $ifNull: ['$interviews.createdAt', '$createdAt'] }
+              ]
+            }
           }
-        } },
+        },
         { $match: { interviewDate: { $gte: start, $lte: end } } },
         { $addFields: { date: '$interviewDate' } },
         { $group: { _id: dateFormat, value: { $sum: 1 } } },
@@ -99,10 +103,12 @@ router.get('/metrics/timeseries', auth, requireAdmin, async (req, res) => {
         { $unwind: '$interviews' },
         { $unwind: '$interviews.rounds' },
         { $match: { 'interviews.rounds.createdAt': { $gte: start, $lte: end } } },
-        { $addFields: {
-          _pct: { $ifNull: ['$interviews.rounds.validation.percentage', 0] },
-          _date: '$interviews.rounds.createdAt'
-        } },
+        {
+          $addFields: {
+            _pct: { $ifNull: ['$interviews.rounds.validation.percentage', 0] },
+            _date: '$interviews.rounds.createdAt'
+          }
+        },
         { $addFields: { _pass: { $gte: ['$_pct', 60] }, date: '$_date' } },
         { $group: { _id: dateFormat, total: { $sum: 1 }, passed: { $sum: { $cond: ['$_pass', 1, 0] } } } },
         { $project: { _id: 0, key: '$_id', total: 1, passed: 1, rate: { $cond: [{ $gt: ['$total', 0] }, { $divide: ['$passed', '$total'] }, 0] } } },
@@ -110,6 +116,36 @@ router.get('/metrics/timeseries', auth, requireAdmin, async (req, res) => {
       ]);
 
       return res.json({ metric: 'interviews', granularity, from: start, to: end, series: agg, passRate: passAgg });
+    }
+
+    if (metric === 'resume-interviews') {
+      // Resume Interviews
+      const agg = await InterviewSession.aggregate([
+        { $unwind: '$resumeInterviews' },
+        { $match: { 'resumeInterviews.createdAt': { $gte: start, $lte: end } } },
+        { $addFields: { date: '$resumeInterviews.createdAt' } },
+        { $group: { _id: dateFormat, value: { $sum: 1 } } },
+        { $project: { _id: 0, key: '$_id', value: 1 } },
+        { $sort: { key: 1 } },
+      ]);
+
+      // Resume Interview Pass rate
+      const passAgg = await InterviewSession.aggregate([
+        { $unwind: '$resumeInterviews' },
+        { $match: { 'resumeInterviews.createdAt': { $gte: start, $lte: end } } },
+        {
+          $addFields: {
+            _pct: { $ifNull: ['$resumeInterviews.validation.percentage', 0] },
+            _date: '$resumeInterviews.createdAt'
+          }
+        },
+        { $addFields: { _pass: { $gte: ['$_pct', 60] }, date: '$_date' } },
+        { $group: { _id: dateFormat, total: { $sum: 1 }, passed: { $sum: { $cond: ['$_pass', 1, 0] } } } },
+        { $project: { _id: 0, key: '$_id', total: 1, passed: 1, rate: { $cond: [{ $gt: ['$total', 0] }, { $divide: ['$passed', '$total'] }, 0] } } },
+        { $sort: { key: 1 } },
+      ]);
+
+      return res.json({ metric: 'resume-interviews', granularity, from: start, to: end, series: agg, passRate: passAgg });
     }
 
     return res.status(400).json({ error: 'Unsupported metric' });
@@ -145,16 +181,20 @@ router.get('/metrics/distribution', auth, requireAdmin, async (req, res) => {
         { $unwind: '$interviews' },
         { $unwind: '$interviews.rounds' },
         { $match: { 'interviews.rounds.createdAt': { $gte: start, $lte: end } } },
-        { $addFields: {
-          mcqScore: { $ifNull: ['$interviews.rounds.validation.mcq.score', 0] },
-          mcqMax: { $ifNull: ['$interviews.rounds.validation.mcq.max_score', 0] },
-          descScore: { $ifNull: ['$interviews.rounds.validation.descriptive.score', 0] },
-          descMax: { $ifNull: ['$interviews.rounds.validation.descriptive.max_score', 0] },
-        } },
-        { $addFields: {
-          mcqPct: { $cond: [{ $gt: ['$mcqMax', 0] }, { $divide: ['$mcqScore', '$mcqMax'] }, 0] },
-          descPct: { $cond: [{ $gt: ['$descMax', 0] }, { $divide: ['$descScore', '$descMax'] }, 0] },
-        } },
+        {
+          $addFields: {
+            mcqScore: { $ifNull: ['$interviews.rounds.validation.mcq.score', 0] },
+            mcqMax: { $ifNull: ['$interviews.rounds.validation.mcq.max_score', 0] },
+            descScore: { $ifNull: ['$interviews.rounds.validation.descriptive.score', 0] },
+            descMax: { $ifNull: ['$interviews.rounds.validation.descriptive.max_score', 0] },
+          }
+        },
+        {
+          $addFields: {
+            mcqPct: { $cond: [{ $gt: ['$mcqMax', 0] }, { $divide: ['$mcqScore', '$mcqMax'] }, 0] },
+            descPct: { $cond: [{ $gt: ['$descMax', 0] }, { $divide: ['$descScore', '$descMax'] }, 0] },
+          }
+        },
         { $project: { mcqPct: 1, descPct: 1 } }
       ]);
       return res.json({ type, from: start, to: end, values: dist });
@@ -173,6 +213,54 @@ router.get('/metrics/distribution', auth, requireAdmin, async (req, res) => {
         { $sort: { round: 1 } },
       ]);
       return res.json({ type, from: start, to: end, byRound: rp });
+    }
+
+    if (type === 'resume_interviews_per_user') {
+      const perUser = await InterviewSession.aggregate([
+        { $unwind: '$resumeInterviews' },
+        { $match: { 'resumeInterviews.createdAt': { $gte: start, $lte: end } } },
+        { $group: { _id: '$userId', count: { $sum: 1 } } },
+        { $project: { _id: 0, userId: '$_id', count: 1 } },
+      ]);
+      return res.json({ type, from: start, to: end, perUser });
+    }
+
+    if (type === 'resume_mcq_desc') {
+      // Bucket distributions for MCQ and Descriptive percentages for resume interviews
+      const dist = await InterviewSession.aggregate([
+        { $unwind: '$resumeInterviews' },
+        { $match: { 'resumeInterviews.createdAt': { $gte: start, $lte: end } } },
+        {
+          $addFields: {
+            mcqScore: { $ifNull: ['$resumeInterviews.validation.mcq.score', 0] },
+            mcqMax: { $ifNull: ['$resumeInterviews.validation.mcq.max_score', 0] },
+            descScore: { $ifNull: ['$resumeInterviews.validation.descriptive.score', 0] },
+            descMax: { $ifNull: ['$resumeInterviews.validation.descriptive.max_score', 0] },
+          }
+        },
+        {
+          $addFields: {
+            mcqPct: { $cond: [{ $gt: ['$mcqMax', 0] }, { $divide: ['$mcqScore', '$mcqMax'] }, 0] },
+            descPct: { $cond: [{ $gt: ['$descMax', 0] }, { $divide: ['$descScore', '$descMax'] }, 0] },
+          }
+        },
+        { $project: { mcqPct: 1, descPct: 1 } }
+      ]);
+      return res.json({ type, from: start, to: end, values: dist });
+    }
+
+    if (type === 'resume_focus_area') {
+      // Pass/fail by focus area
+      const fa = await InterviewSession.aggregate([
+        { $unwind: '$resumeInterviews' },
+        { $match: { 'resumeInterviews.createdAt': { $gte: start, $lte: end } } },
+        { $addFields: { pct: { $ifNull: ['$resumeInterviews.validation.percentage', 0] } } },
+        { $addFields: { pass: { $gte: ['$pct', 60] }, focusArea: '$resumeInterviews.focusArea' } },
+        { $group: { _id: '$focusArea', total: { $sum: 1 }, passed: { $sum: { $cond: ['$pass', 1, 0] } } } },
+        { $project: { _id: 0, focusArea: '$_id', total: 1, passed: 1, failed: { $subtract: ['$total', '$passed'] } } },
+        { $sort: { focusArea: 1 } },
+      ]);
+      return res.json({ type, from: start, to: end, byFocusArea: fa });
     }
 
     return res.status(400).json({ error: 'Unsupported distribution type' });
@@ -260,7 +348,64 @@ router.get('/users/:userId/interviews', auth, requireAdmin, async (req, res) => 
       }
     }
 
-    return res.json({ totalInterviews, sessions: summaries });
+    // Add resume interviews
+    const resumeSummaries = [];
+    let totalResumeInterviews = 0;
+
+    for (const s of sessions) {
+      for (const resumeInterview of (s.resumeInterviews || [])) {
+        totalResumeInterviews += 1;
+        const v = resumeInterview.validation || {};
+        const percentage = typeof v.percentage === 'number' ? v.percentage : 0;
+        const passed = percentage >= 60;
+
+        // Build questions details combining MCQ and Descriptive
+        const mcqDetails = Array.isArray(v.mcq?.details) ? v.mcq.details.map((d, i) => ({
+          type: 'mcq',
+          index: i,
+          question: d.question,
+          user_answer: d.user_answer,
+          correct_answer: d.correct_answer,
+          is_correct: d.is_correct,
+          options: d.options,
+        })) : [];
+
+        const descDetails = Array.isArray(v.descriptive?.details) ? v.descriptive.details.map((d, i) => ({
+          type: 'desc',
+          index: i,
+          question: d.question,
+          user_answer: d.user_answer,
+          score: d.score,
+          max_score: d.max_score,
+          feedback: d.feedback,
+        })) : [];
+
+        resumeSummaries.push({
+          sessionId: resumeInterview.sessionId,
+          focusArea: resumeInterview.focusArea,
+          createdAt: resumeInterview.createdAt,
+          submittedAt: resumeInterview.submittedAt,
+          validatedAt: resumeInterview.validatedAt,
+          scores: {
+            mcq: { score: v.mcq?.score ?? 0, max_score: v.mcq?.max_score ?? 0 },
+            descriptive: { score: v.descriptive?.score ?? 0, max_score: v.descriptive?.max_score ?? 0 },
+            total_score: v.total_score ?? 0,
+            max_possible_score: v.max_possible_score ?? 0,
+            verdict: v.verdict || '',
+            percentage: percentage,
+            passed,
+          },
+          questions: [...mcqDetails, ...descDetails],
+        });
+      }
+    }
+
+    return res.json({
+      totalInterviews,
+      sessions: summaries,
+      totalResumeInterviews,
+      resumeInterviews: resumeSummaries
+    });
   } catch (err) {
     console.error('Admin GET /users/:userId/interviews error:', err);
     return res.status(500).json({ error: 'Server error' });
@@ -290,7 +435,7 @@ router.get('/metrics/overview', auth, requireAdmin, async (req, res) => {
 
     // Sum resume uploads from users
     const uploadsAgg = await User.aggregate([
-      { $group: { _id: null, total: { $sum: { $ifNull: [ '$resumeUploadCount', 0 ] } } } }
+      { $group: { _id: null, total: { $sum: { $ifNull: ['$resumeUploadCount', 0] } } } }
     ]);
     const resumeUploadsTotal = (uploadsAgg[0]?.total) || 0;
 
@@ -301,6 +446,13 @@ router.get('/metrics/overview', auth, requireAdmin, async (req, res) => {
       { $count: 'totalInterviews' }
     ]);
     const totalInterviews = totalInterviewsAgg[0]?.totalInterviews || 0;
+
+    // Resume interviews metrics
+    const totalResumeInterviewsAgg = await InterviewSession.aggregate([
+      { $unwind: '$resumeInterviews' },
+      { $count: 'totalResumeInterviews' }
+    ]);
+    const totalResumeInterviews = totalResumeInterviewsAgg[0]?.totalResumeInterviews || 0;
 
     // Fetch sessions to compute round-based metrics and activity
     const sessions = await InterviewSession.find({}, { userId: 1, interviews: 1 }).lean();
@@ -368,14 +520,32 @@ router.get('/metrics/overview', auth, requireAdmin, async (req, res) => {
     const mau = activeUsers30d.size;
     const dauMauRatio = mau > 0 ? (dau / mau) : 0;
 
+    // Calculate resume interview pass rate
+    const resumeSessionsData = await InterviewSession.find({}, { userId: 1, resumeInterviews: 1 }).lean();
+    let totalResumeInterviewsPassed = 0;
+
+    for (const s of resumeSessionsData) {
+      const resumeInterviews = Array.isArray(s.resumeInterviews) ? s.resumeInterviews : [];
+      for (const interview of resumeInterviews) {
+        const v = interview?.validation || {};
+        const pct = typeof v.percentage === 'number' ? v.percentage : 0;
+        const passed = pct >= 60;
+        if (passed) totalResumeInterviewsPassed += 1;
+      }
+    }
+
+    const resumeInterviewPassRate = totalResumeInterviews > 0 ? (totalResumeInterviewsPassed / totalResumeInterviews) : 0;
+
     return res.json({
       totalUsers,
       newUsers7d,
       newUsers30d,
       resumeUploadsTotal,
       totalInterviews,
+      totalResumeInterviews,
       avgRoundsPassedPerInterview,
       overallRoundPassRate: overallRoundPassRateFixed,
+      resumeInterviewPassRate,
       dau,
       mau,
       dauMauRatio,
