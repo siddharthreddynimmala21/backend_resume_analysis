@@ -73,6 +73,22 @@ router.post('/start', upload.single('resume'), async (req, res) => {
       return res.status(400).json({ error: 'Missing job description', message: 'Job description is required when paste option is selected.' });
     }
 
+    // Determine previously used hard topics for round 2
+    let prevUsedHardTopicsArg = '';
+    if (String(interviewRound) === '2') {
+      try {
+        const existing = await InterviewSession.findOne({ userId: userId });
+        const currentInterview = existing?.interviews?.[existing.interviews.length - 1];
+        const r1 = currentInterview?.rounds?.find(r => r.round === 1);
+        const prevHard = (r1?.selectedHardTopics) || (r1?.selections?.selectedHardTopics) || [];
+        if (Array.isArray(prevHard) && prevHard.length) {
+          prevUsedHardTopicsArg = JSON.stringify(prevHard);
+        }
+      } catch (e) {
+        // non-fatal; proceed without prev_used_hard
+      }
+    }
+
     // Call Python script with proper path
     const scriptPath = path.resolve(__dirname, '../python/ai_interview.py');
     const pythonArgs = [
@@ -86,6 +102,9 @@ router.post('/start', upload.single('resume'), async (req, res) => {
       '--experience', experience,
       '--round', interviewRound
     ];
+    if (prevUsedHardTopicsArg) {
+      pythonArgs.push('--prev_used_hard', prevUsedHardTopicsArg);
+    }
     const pythonProcess = spawn('python', pythonArgs);
 
     let pythonOutput = '';
@@ -155,6 +174,14 @@ router.post('/start', upload.single('resume'), async (req, res) => {
         const roundNumber = parseInt(interviewRound);
         const userInterview = await InterviewSession.findOne({ userId: userId });
 
+        // Extract selections for persistence if present
+        const selections = {
+          easyTopicSkills: payload.easy_topic_skills || [],
+          hardTopicSkills: payload.hard_topic_skills || [],
+          selectedEasyTopics: payload.selected_easy_topics || [],
+          selectedHardTopics: payload.selected_hard_topics || [],
+        };
+
         if (roundNumber === 1) {
           // Round 1: Create a new interview
           if (userInterview) {
@@ -164,6 +191,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
                 {
                   round: roundNumber,
                   questions: payload.questions,
+                  selections,
                 },
               ],
             });
@@ -178,6 +206,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
                     {
                       round: roundNumber,
                       questions: payload.questions,
+                      selections,
                     },
                   ],
                 },
@@ -193,6 +222,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
               currentInterview.rounds.push({
                 round: roundNumber,
                 questions: payload.questions,
+                selections,
               });
               await userInterview.save();
             } else {

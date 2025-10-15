@@ -9,11 +9,15 @@ router.post('/submit', async (req, res) => {
         const token = req.headers.authorization?.split('Bearer ')[1];
         if (!token) return res.status(401).json({ error: 'Unauthorized' });
         const { userId } = jwt.decode(token);
-        const { sessionId, answers } = req.body;
+        const { sessionId, round, answers } = req.body;
+        const roundNum = parseInt(round);
 
         // Validate required fields
         if (!sessionId) {
             return res.status(400).json({ error: 'sessionId is required', details: { sessionId } });
+        }
+        if (Number.isNaN(roundNum)) {
+            return res.status(400).json({ error: 'round is required and must be a number', details: { round } });
         }
 
         // Validate answers structure
@@ -42,31 +46,62 @@ router.post('/submit', async (req, res) => {
         // Debug the incoming answers
         console.log('Received resume interview answers:', JSON.stringify(answers));
 
-        // Use MongoDB's update operators to directly update the nested document
-        const result = await InterviewSession.updateOne(
-            {
-                userId,
-                'resumeInterviews.sessionId': sessionId
-            },
-            {
-                $set: {
-                    'resumeInterviews.$.answers.mcq': answers.mcq,
-                    'resumeInterviews.$.answers.desc': answers.desc,
-                    'resumeInterviews.$.submittedAt': new Date()
+        // Prefer per-round update if rounds exist; otherwise fallback to legacy fields
+        let result;
+        const riMatched = (sessionExists.resumeInterviews || []).find(ri => ri.sessionId === sessionId) || null;
+        const hasRounds = Array.isArray(riMatched?.rounds) && riMatched.rounds.length > 0;
+        if (hasRounds) {
+            result = await InterviewSession.updateOne(
+                {
+                    userId,
+                    'resumeInterviews.sessionId': sessionId,
+                    'resumeInterviews.rounds.round': roundNum
+                },
+                {
+                    $set: {
+                        'resumeInterviews.$[ri].rounds.$[r].answers.mcq': answers.mcq,
+                        'resumeInterviews.$[ri].rounds.$[r].answers.desc': answers.desc,
+                        'resumeInterviews.$[ri].rounds.$[r].submittedAt': new Date()
+                    }
+                },
+                {
+                    arrayFilters: [
+                        { 'ri.sessionId': sessionId },
+                        { 'r.round': roundNum }
+                    ]
                 }
-            }
-        );
+            );
+        } else {
+            result = await InterviewSession.updateOne(
+                {
+                    userId,
+                    'resumeInterviews.sessionId': sessionId
+                },
+                {
+                    $set: {
+                        'resumeInterviews.$.answers.mcq': answers.mcq,
+                        'resumeInterviews.$.answers.desc': answers.desc,
+                        'resumeInterviews.$.submittedAt': new Date()
+                    }
+                }
+            );
+        }
 
         console.log('Resume interview update result:', JSON.stringify(result));
 
         // Verify the save worked by fetching the document again
         const verifySession = await InterviewSession.findOne(
-            { userId, 'resumeInterviews.sessionId': sessionId },
-            { 'resumeInterviews.$': 1 }
+            { userId, 'resumeInterviews.sessionId': sessionId }
         );
 
-        if (verifySession && verifySession.resumeInterviews && verifySession.resumeInterviews[0]) {
-            console.log('Verified saved resume interview answers:', JSON.stringify(verifySession.resumeInterviews[0].answers));
+        if (verifySession && Array.isArray(verifySession.resumeInterviews)) {
+            const ri = verifySession.resumeInterviews.find(x => x.sessionId === sessionId);
+            if (Array.isArray(ri.rounds) && ri.rounds.length) {
+                const vr = ri.rounds.find(r => r.round === roundNum);
+                console.log('Verified saved resume interview round answers:', JSON.stringify(vr?.answers));
+            } else {
+                console.log('Verified saved resume interview answers (legacy):', JSON.stringify(ri.answers));
+            }
         } else {
             console.log('Resume interview verification query did not return expected structure');
         }

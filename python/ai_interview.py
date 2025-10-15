@@ -14,18 +14,14 @@ from typing import TypedDict
 class InterviewState(TypedDict, total=False):
     resume_text: str
     job_desc: str
-    # New fields for skill-based pipeline
-    user_skills: List[str]
-    required_skills: List[str]
-    matched_skills: List[str]
-    unmatched_skills: List[str]
+    # New fields for topic-based pipeline
+    easy_topic_skills: List[str]
+    hard_topic_skills: List[str]
+    selected_easy_topics: List[str]
+    selected_hard_topics: List[str]
+    prev_used_hard_topics: List[str]
     target_role: str
     experience: str
-    # Sampling controls
-    matched_sample_size: int
-    unmatched_sample_size: int
-    sampled_matched_skills: List[str]
-    sampled_unmatched_skills: List[str]
     questions: Dict[str, Any]
 
 
@@ -55,312 +51,158 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
 
     llm = ChatGroq(temperature=0.7, model_name=_resolve_groq_model(), max_tokens=2048)
     
-    # Define different prompts for different rounds (now skill-aware)
+    # Define different prompts for different rounds (now topic-aware)
     prompts = {
         "technical_round1": """
-        Generate interview questions for Technical Round 1 based on BOTH the candidate's resume and the job description.
+        # ROLE: You are an expert Technical Interviewer and Question Architect. Your persona is a Senior Engineer tasked with creating a fair and effective screening interview.
+        # OBJECTIVE: Generate a set of 8 interview questions for a "Technical Round 1" based on the provided skill topics, candidate resume, and job description.
 
-        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
+        # CONTEXTUAL INPUTS:
+        1. FOCUSED SKILL TOPICS:
+           - Easy Difficulty (4 topics): {selected_easy_topics}
+           - Hard Difficulty (1 topic): {selected_hard_topics}
+        2. CANDIDATE RESUME: {resume_text}
+        3. JOB DESCRIPTION: {job_desc}
 
-       
+        # STRICT GUIDELINES:
+        1. Question Distribution & Topic Adherence:
+           - Generate exactly 5 Multiple-Choice Questions (MCQs) and 3 Descriptive Questions.
+           - MCQs: Create 4 questions from the 'Easy Difficulty' topics and 1 question from the 'Hard Difficulty' topic.
+           - Descriptive Questions: Create 2 questions from the 'Easy Difficulty' topics and 1 challenging, in-depth question from the 'Hard Difficulty' topic.
+           - CRITICAL: Do NOT ask about any topic or skill NOT listed in the FOCUSED SKILL TOPICS.
+        2. Contextual Tailoring:
+           - Subtly tailor the questions to be relevant to the candidate's experience in the CANDIDATE RESUME and the requirements in the JOB DESCRIPTION.
+           - For example, frame a question around a project or technology mentioned in their resume.
+        3. Quality Standards:
+           - MCQs: Ensure there are four distinct options (A, B, C, D) with only one unambiguously correct answer. The incorrect options should be plausible distractors.
+           - Descriptive Questions: Assess thought process, problem-solving, and depth of knowledge.
 
-        CANDIDATE'S RESUME:
-
-        {resume_text}
-
-
-
-        JOB DESCRIPTION:
-
-        {job_desc}
-
-       
-
-        SKILL ANALYSIS (derived by earlier agents):
-
-        - Matched Skills (full set): {matched_skills}
-
-        - Unmatched Skills (full set): {unmatched_skills}
-
-        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
-
-        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
-
-        - Target Role: {target_role}
-
-        - Experience (years): {experience}
-
-       
-
-        INSTRUCTIONS:
-
-        - Analyze the candidate's background from their resume
-
-        - Identify key technical requirements from the job description
-
-        - Focus on fundamental technical skills and basic concepts that match BOTH the resume and job requirements
-
-        - Validate proficiency in MATCHED skills with appropriately scoped questions
-
-        - Probe knowledge gaps in UNMATCHED skills with diagnostic questions
-
-        - Tailor difficulty and context to the Target Role and Experience
-
-        - Create questions that test skills mentioned in the job description while considering the candidate's experience level
-
-        - IMPORTANT: When selecting skills to write questions about, ONLY USE the SAMPLED skill lists shown above. Do NOT use skills outside those lists.
-
-        - Ensure questions are relevant to the specific role and technologies mentioned in the job description
-
-       
-
-        Requirements:
-
-        - Generate EXACTLY 5 MCQ questions with 4 options each (based on technologies/skills from job description)
-
-        - Generate EXACTLY 3 descriptive questions (focused on job-relevant scenarios and skills)
-
-        - For MCQ questions, indicate the correct answer as one of "A","B","C","D"
-
-        - Questions should be tailored to the specific job requirements and candidate's background
-
-        - Ensure a balanced mix: at least 2 questions targeting unmatched skills (to assess gaps) and 3 leveraging matched skills (to validate strengths)
-
-       
-
-        CRITICAL MCQ REQUIREMENTS:
-
-        - Each MCQ must have EXACTLY ONE correct answer - no ambiguity
-
-        - The other 3 options must be clearly incorrect or less optimal
-
-        - Avoid questions where multiple answers could be considered correct
-
-        - Make sure the correct answer is definitively the best choice
-
-        - Double-check that the answer you mark as correct is actually correct
-
-        - Avoid subjective questions - focus on factual, technical knowledge
-
-        - Test specific, verifiable technical concepts with clear right/wrong answers
-
-       
-
-        Output JSON format ONLY (no prose). Return exactly one JSON object with the following structure:
-
-        {{
-
-          "mcq_questions": [
-
-            {{
-
-              "question": "In JavaScript, what will be the output of: console.log(typeof null)?",
-
-              "options": ["A. null", "B. undefined", "C. object", "D. boolean"],
-
-              "answer": "C"
-
-            }},
-
-            ... 5 items total ...
-
-          ],
-
-          "desc_questions": [
-
-            "Describe X ...",
-
-            "Explain Y ...",
-
-            "How would you approach Z ..."
-
-          ]
-
-       }}
+        # OUTPUT FORMAT:
+        - Your entire response MUST be a single, valid JSON object.
+        - Do NOT include any text, explanations, or markdown formatting before or after the JSON structure.
+        {{
+          "mcq_questions": [
+            {{ "question": "...", "options": {{ "A": "...", "B": "...", "C": "...", "D": "..." }}, "answer": "A" }}
+          ],
+          "desc_questions": [ "...", "...", "..." ]
+        }}
         """,
         
         "technical_round2": """
-        Generate ADVANCED interview questions for Technical Round 2 based on BOTH the candidate's resume and the job description.
+        # ROLE: You are a Principal Engineer or Tech Lead. Your task is to conduct a deep-dive technical interview (Round 2) to rigorously assess a candidate's expert-level knowledge and problem-solving abilities.
+        # OBJECTIVE: Generate a highly challenging set of 8 interview questions. This round must be significantly more difficult than a preliminary screening and should focus on architectural thinking, trade-off analysis, and practical application of advanced concepts.
 
-        Additionally, use the SKILL ANALYSIS below to target strengths and gaps.
+        # CONTEXTUAL INPUTS:
+        1. ADVANCED SKILL TOPICS: {remaining_hard_topics}
+        2. TOPICS TO AVOID (Covered in Round 1): {prev_used_hard_topics}
+        3. CANDIDATE RESUME: {resume_text}
+        4. JOB DESCRIPTION: {job_desc}
 
+        # STRICT GUIDELINES:
+        1. Difficulty Level: EXPERT
+           - Move beyond definitional questions. Focus on "How would you design...", "What are the trade-offs between...", and "Why would you choose X over Y in a scenario like..."
+           - Questions must probe deep understanding of underlying principles.
+        2. Question Composition
+           - Advanced MCQs (5 total): test nuanced understanding of complex topics. Incorrect options must be subtle misconceptions or suboptimal solutions.
+           - Problem-Solving Scenarios (3 total): mini case studies/design challenges requiring the candidate to architect a solution, debug a complex issue, or justify architectural decisions.
+        3. Strict Topic Adherence
+           - Base ALL questions strictly on ADVANCED SKILL TOPICS.
+           - CRITICAL: Do NOT ask about any topic listed in TOPICS TO AVOID.
+        4. Contextual Scenarios
+           - Use the candidate resume and job description to craft realistic, role-relevant problems (e.g., scale to millions of users, align with domain/constraints).
 
-        CANDIDATE'S RESUME:
-
-        {resume_text}
-
-
-
-        JOB DESCRIPTION:
-
-        {job_desc}
-
-
-
-        SKILL ANALYSIS (derived by earlier agents):
-
-        - Matched Skills (full set): {matched_skills}
-
-        - Unmatched Skills (full set): {unmatched_skills}
-
-        - SAMPLED Matched Skills (USE ONLY THESE FOR CONTENT): {sampled_matched_skills}
-
-        - SAMPLED Unmatched Skills (USE ONLY THESE FOR CONTENT): {sampled_unmatched_skills}
-
-        - Target Role: {target_role}
-
-        - Experience (years): {experience}
-
-
-
-        INSTRUCTIONS:
-
-        - This is a SIGNIFICANTLY MORE DIFFICULT technical round compared to Technical Round 1
-
-        - Questions must be EXPERT-LEVEL and test deep understanding of complex concepts
-
-        - Focus on ADVANCED system design, architecture patterns, performance optimization, and scalability challenges
-
-        - Test knowledge of advanced algorithms, data structures, distributed systems, and enterprise-level solutions
-
-        - Questions should require SENIOR-LEVEL expertise and problem-solving skills
-
-        - Consider complex real-world scenarios that require advanced technical decision-making
-
-        - Validate proficiency in MATCHED skills and probe UNMATCHED skills at advanced depth, considering role and experience
-
-        - IMPORTANT: ONLY USE the SAMPLED skill lists shown above when choosing skills for questions.
-
-
-
-        DIFFICULTY REQUIREMENTS:
-
-        - MCQ questions should test EXPERT knowledge of advanced concepts, edge cases, and complex scenarios
-
-        - Questions should involve multi-layered thinking and deep technical understanding
-
-        - Focus on advanced topics like: distributed systems, microservices architecture, performance optimization,
-
-          advanced algorithms, system scalability, security architecture, advanced database concepts,
-
-          cloud architecture patterns, advanced design patterns, and complex problem-solving
-
-        - Descriptive questions should require designing complex systems and solving challenging technical problems
-
-
-
-        Output JSON format ONLY (no prose). Return exactly one JSON object with the structure:
-
+        # OUTPUT FORMAT:
+        - Your entire response MUST be a single, valid JSON object.
+        - Do NOT include any text, explanations, or markdown formatting before or after the JSON structure.
         {{
-
           "mcq_questions": [
-
-            {{
-
-              "question": "In the CAP theorem for distributed systems, what does the 'P' represent?",
-
-              "options": ["A. Performance", "B. Partition tolerance", "C. Persistence", "D. Parallel processing"],
-
-              "answer": "B"
-
-            }},
-
-            ... 5 items total ...
-
+            {{ "question": "...", "options": {{ "A": "...", "B": "...", "C": "...", "D": "..." }}, "answer": "A" }}
           ],
-
-          "desc_questions": [
-
-            "Design a fault-tolerant ...",
-
-            "Architect a real-time ...",
-
-            "Design a comprehensive security ..."
-
-          ]
-
+          "desc_questions": [ "...", "...", "..." ]
         }}
         """,
 
         "managerial_round": """
-        Generate people-leadership and team-management interview questions for the Managerial Round.
-        Questions must focus on leadership scenarios, conflict resolution, performance management, stakeholder communication, planning/prioritization, and aligning teams to strategy — NOT on individual contributor coding tasks or role-specific technical responsibilities.
+        # ROLE: You are a seasoned Director or VP of Engineering. You are interviewing a candidate for a leadership position and need to assess their people management skills, strategic thinking, and emotional intelligence.
+        # OBJECTIVE: Generate a set of sophisticated behavioral and situational judgment questions for a final-round Managerial Interview. The questions must evaluate the candidate's leadership potential and alignment with modern management practices.
 
-        CANDIDATE'S RESUME:
-        {resume_text}
+        # CONTEXTUAL INPUTS:
+        1. CANDIDATE RESUME: {resume_text}
+        2. JOB DESCRIPTION (for organizational context): {job_desc}
+        3. CANDIDATE PROFILE:
+           - Target Role: {target_role}
+           - Years of Experience: {experience}
 
-        JOB DESCRIPTION (use for org context, scope, domain; do NOT copy company-specific bullets):
-        {job_desc}
+        # STRICT GUIDELINES:
+        1. Seniority Calibration (Crucial):
+           - Adjust scope and complexity based on years of experience.
+           - For junior managers/leads (< 5 years): focus on team-level challenges, direct-report performance, and project execution.
+           - For senior managers/directors (> 10 years): focus on cross-functional strategy, managing other managers, org design, and ambiguity.
+        2. Question Focus:
+           - Questions must be strictly about leadership, strategy, and people management.
+           - CRITICAL: Do NOT generate questions about individual coding tasks, technical system design, or specific technologies.
+        3. MCQ Scenario Design:
+           - Generate 5 MCQ questions. Each MCQ should be a realistic managerial dilemma.
+           - Options (A–D) should represent distinct, plausible management approaches (e.g., passive, authoritarian, collaborative/empowering, etc.). Mark as correct the option best aligned with modern leadership principles.
+        4. Descriptive Question Theming:
+           - Generate 3 descriptive, open-ended questions.
+           - Each must probe a different core leadership theme. Choose three distinct themes from:
+             1) Conflict Resolution & Communication
+             2) Performance Management & Coaching
+             3) Strategic Planning & Prioritization
+             4) Stakeholder Management & Influence
+             5) Leading Through Change & Ambiguity
+           - Frame the questions to encourage storytelling using the STAR method (Situation, Task, Action, Result).
 
-        Candidate/role context:
-        - Target Role: {target_role}
-        - Experience (years): {experience}
-
-        IMPORTANT GUIDELINES:
-        - Emphasize real-world leadership scenarios over product/company trivia.
-        - Avoid questions like "What are XYZ company's SE2 responsibilities" or any role-specific JD bullet regurgitation.
-        - Prefer situation/behavior/impact framing (STAR) to elicit depth: situation, task, actions, results, learning.
-        - Keep language role-agnostic and domain-neutral where possible; tailor scale/complexity to seniority.
-
-        THEMES TO COVER:
-        - Leading through crisis/ambiguity and communicating under pressure.
-        - Managing interpersonal conflict within the team and across functions.
-        - Coaching, performance feedback, and developing individual strengths.
-        - Prioritization, planning, and aligning execution to strategy/OKRs.
-        - Stakeholder management and influencing without authority.
-
-        OUTPUT REQUIREMENTS:
-        - Generate EXACTLY 5 MCQ questions and EXACTLY 3 descriptive questions.
-        - MCQs should present realistic managerial scenarios with one clearly best response out of four options (A–D). Avoid technical trivia.
-        - Descriptive questions must be open-ended and similar in spirit to:
-          1) "Describe a time you led your team through an unexpected challenge or crisis. How did you navigate it, how did you communicate, and what was the outcome?"
-          2) "Tell me about a time you managed a conflict between team members. What steps did you take and what did you learn about your management style?"
-          3) "How do you identify individual strengths and areas for development and coach an employee to improve performance?"
-          4) "How do you ensure your team's priorities align with company strategic goals?" (Pick three distinct prompts of this nature.)
-
-        FORMAT:
-        Return JSON ONLY (no prose). Use this structure exactly:
+        # OUTPUT FORMAT:
+        - Your entire response MUST be a single, valid JSON object.
+        - Do NOT include any text, explanations, or markdown formatting before or after the JSON structure.
         {{
           "mcq_questions": [
-            {{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "answer": "A"}},
-            ... five items total ...
+            {{ "question": "...", "options": {{ "A": "...", "B": "...", "C": "...", "D": "..." }}, "answer": "A" }}
           ],
-          "desc_questions": ["...", "...", "..."]
+          "desc_questions": [ "...", "...", "..." ]
         }}
         """,
 
         "hr_round": """
-        Generate classic HR interview questions that assess motivation, culture fit, communication, and self-awareness. Avoid technical/role-specific responsibilities.
+        # ROLE: You are an experienced HR Business Partner. Your role is to assess a candidate's motivation, self-awareness, collaborative spirit, and overall alignment with a healthy and productive workplace culture.
+        # OBJECTIVE: Generate a set of classic HR interview questions for a final screening round. The questions should be designed to understand the candidate's past behaviors, future ambitions, and interpersonal skills.
 
-        CANDIDATE'S RESUME:
-        {resume_text}
+        # CONTEXTUAL INPUTS:
+        1. CANDIDATE RESUME: {resume_text}
+        2. JOB DESCRIPTION (for organizational context): {job_desc}
+        3. CANDIDATE PROFILE:
+           - Target Role: {target_role}
+           - Years of Experience: {experience}
 
-        JOB DESCRIPTION (for context only; do not copy bullets):
-        {job_desc}
+        # STRICT GUIDELINES:
+        1. Assessment Focus:
+           - Evaluate across four key areas:
+             1) Motivation & Ambition
+             2) Collaboration & Teamwork
+             3) Self-Awareness & Growth
+             4) Resilience & Professionalism
+        2. MCQ Design (Situational Judgment):
+           - Generate 5 MCQ questions, each a common workplace scenario testing professional judgment.
+           - Options (A–D) must reflect different reactions (e.g., proactive, passive, overly individualistic, collaborative). The best answer reflects maturity, ownership, and a team-oriented mindset.
+        3. Descriptive Question Theming:
+           - Generate 3 classic, open-ended questions; each targets a different area from the four above. Examples include:
+             - Motivation & Ambition: "Why this company?", "Where do you see yourself in 5 years?"
+             - Collaboration & Teamwork: "Tell me about a time you disagreed with a teammate."
+             - Self-Awareness & Growth: "What is your greatest weakness?", "Describe a time you received difficult feedback."
+        4. General Rules:
+           - CRITICAL: Do NOT ask any technical questions or day-to-day role-specific tasks.
+           - Use clear, simple, and universally understood HR language.
 
-        Candidate/role context:
-        - Target Role: {target_role}
-        - Experience (years): {experience}
-
-        GUIDELINES:
-        - Focus on: reasons for interest, values/culture fit, conflict resolution experiences, long-term goals, strengths/weaknesses, teamwork, communication.
-        - Keep wording neutral and broadly applicable across companies.
-        - Use simple, familiar HR phrasing.
-
-        OUTPUT REQUIREMENTS:
-        - Generate EXACTLY 5 MCQ questions and EXACTLY 3 descriptive questions.
-        - MCQs should reflect typical HR screening topics with one clearly best option (A–D) among common choices.
-        - Descriptive questions should be open-ended and similar to:
-          1) "Why are you interested in this role and our company?"
-          2) "Tell me about a time you had a conflict with a coworker or manager. How did you resolve it?"
-          3) "Where do you see yourself in 5 years?"
-          4) "What is your greatest weakness and how are you working on it?" (Pick three distinct prompts.)
-
-        FORMAT:
-        Return JSON ONLY (no prose). Use this structure exactly:
+        # OUTPUT FORMAT:
+        - Your entire response MUST be a single, valid JSON object.
+        - Do NOT include any text, explanations, or markdown formatting before or after the JSON structure.
         {{
-          "mcq_questions": [ {{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "answer": "A"}}, ... five items total ... ],
-          "desc_questions": ["...", "...", "..."]
+          "mcq_questions": [
+            {{ "question": "...", "options": {{ "A": "...", "B": "...", "C": "...", "D": "..." }}, "answer": "A" }}
+          ],
+          "desc_questions": [ "...", "...", "..." ]
         }}
         """,
         
@@ -382,53 +224,66 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
         except Exception:
             return None
 
-    def skill_extraction(state: dict):
-        """Agent 1: extract user_skills and required_skills from resume and JD."""
+    def topic_extraction(state: dict):
+        """Agent 1: Extract easy and hard topic skills from the ENTIRE resume (all sections)."""
         extract_prompt = ChatPromptTemplate.from_template(
             """
-            You are a skill extraction assistant. Read the following resume text and job description and extract concise, deduplicated skill names.
-            Return STRICT JSON only in the following format with two arrays of strings:
+            You are a resume topic mining assistant. Read the ENTIRE resume content below (skills, projects, work experience, summary, certifications, any other sections) and extract two arrays:
+            1) easy_topic_skills: up to 10 topics that are foundational/common for the candidate based on resume content
+            2) hard_topic_skills: up to 5 topics that are advanced/deep or complex according to the resume content
+
+            Rules:
+            - Deduplicate and normalize topic names (short, canonical terms)
+            - Consider the full resume, not just a skills list
+            - Do not invent technologies that aren't implied by the resume
+            - Keep the limits strictly: easy max 10, hard max 5
+
+            Return STRICT JSON only in this format:
             {{
-              "user_skills": ["skill1", "skill2", ...],
-              "required_skills": ["skillA", "skillB", ...]
+              "easy_topic_skills": ["..."],
+              "hard_topic_skills": ["..."]
             }}
 
-            Resume Text:
+            RESUME TEXT:
             {resume_text}
-
-            Job Description:
-            {job_desc}
             """
         )
-        result = llm.predict(extract_prompt.format(**state))
+        result = llm.predict(extract_prompt.format(resume_text=state.get("resume_text", "")))
         data = _safe_json(result) or {}
-        state["user_skills"] = data.get("user_skills", [])
-        state["required_skills"] = data.get("required_skills", [])
+        easy = (data.get("easy_topic_skills") or [])[:10]
+        hard = (data.get("hard_topic_skills") or [])[:5]
+        state["easy_topic_skills"] = easy
+        state["hard_topic_skills"] = hard
         return state
 
-    def skill_matching(state: dict):
-        """Agent 2: compute matched and unmatched skills."""
-        # ensure lists
-        user = state.get("user_skills", []) or []
-        req = state.get("required_skills", []) or []
-        match_prompt = ChatPromptTemplate.from_template(
-            """
-            Compare the following skill lists and return STRICT JSON only:
-            {{
-              "matched_skills": ["..."],
-              "unmatched_skills": ["..."]
-            }}
-            - matched_skills: skills present in both user_skills and required_skills (case-insensitive, normalize synonyms where obvious)
-            - unmatched_skills: skills present in required_skills but not in user_skills
+    def topic_selection(state: dict):
+        """Agent 2: Select topics per round:
+        - Round 1: pick 4 random easy topics and 1 random hard topic
+        - Round 2: use all remaining hard topics excluding previously used hard topics
+        """
+        easy = state.get("easy_topic_skills", []) or []
+        hard = state.get("hard_topic_skills", []) or []
+        prev = state.get("prev_used_hard_topics", []) or []
 
-            user_skills: {user_skills}
-            required_skills: {required_skills}
-            """
-        )
-        result = llm.predict(match_prompt.format(user_skills=user, required_skills=req))
-        data = _safe_json(result) or {}
-        state["matched_skills"] = data.get("matched_skills", [])
-        state["unmatched_skills"] = data.get("unmatched_skills", [])
+        try:
+            round_num = int(state.get("round", "1"))
+        except Exception:
+            round_num = 1
+
+        if round_num == 1:
+            sel_easy = random.sample(easy, k=min(4, len(easy))) if easy else []
+            sel_hard = random.sample(hard, k=min(1, len(hard))) if hard else []
+            state["selected_easy_topics"] = sel_easy
+            state["selected_hard_topics"] = sel_hard
+        elif round_num == 2:
+            remaining_hard = [h for h in hard if h not in prev]
+            state["remaining_hard_topics"] = remaining_hard
+            state["selected_easy_topics"] = []
+            state["selected_hard_topics"] = remaining_hard[:]  # for consistency in output
+        else:
+            # Other rounds don't use topic selection
+            state["selected_easy_topics"] = []
+            state["selected_hard_topics"] = []
         return state
 
     def skill_sampling(state: dict):
@@ -451,7 +306,33 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
         return state
 
     def generate_questions(state: dict):
-        prompt_text = prompt.format(**state)
+        # For technical rounds, ensure proper prompt variables are present
+        try:
+            round_num = int(state.get("round", "1"))
+        except Exception:
+            round_num = 1
+
+        if round_type == "technical_round1":
+            prompt_text = prompt.format(
+                selected_easy_topics=json.dumps(state.get("selected_easy_topics", [])),
+                selected_hard_topics=json.dumps(state.get("selected_hard_topics", [])),
+                resume_text=state.get("resume_text", ""),
+                job_desc=state.get("job_desc", ""),
+            )
+        elif round_type == "technical_round2":
+            prompt_text = prompt.format(
+                remaining_hard_topics=json.dumps(state.get("remaining_hard_topics", state.get("selected_hard_topics", []))),
+                prev_used_hard_topics=json.dumps(state.get("prev_used_hard_topics", [])),
+                resume_text=state.get("resume_text", ""),
+                job_desc=state.get("job_desc", ""),
+            )
+        else:
+            prompt_text = prompt.format(
+                resume_text=state.get("resume_text", ""),
+                job_desc=state.get("job_desc", ""),
+                target_role=state.get("target_role", ""),
+                experience=state.get("experience", ""),
+            )
         result = llm.predict(prompt_text)
 
         def is_option_like(s: str) -> bool:
@@ -484,21 +365,30 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
                         # Drop placeholder text entirely
                         if q.lower().startswith("placeholder mcq"):
                             q = "Which of the following best aligns with the target role?"
-                        opts = item.get("options", [])
+                        opts_raw = item.get("options", [])
                         ans = str(item.get("answer", "")).strip().upper()
-                        if not isinstance(opts, list):
-                            opts = []
-                        # Keep only first 4, enforce labels A-D
-                        opts = [str(o) for o in opts if isinstance(o, str)]
-                        # If options not labeled, label them
                         labeled = []
-                        for i, o in enumerate(opts[:4]):
-                            label = chr(65 + i)
-                            o = str(o).replace("```", "").strip()
-                            if is_option_like(o):
-                                labeled.append(o)
-                            else:
-                                labeled.append(f"{label}. {o}")
+                        # Accept either dict {A:...,B:...,C:...,D:...} or list [..]
+                        if isinstance(opts_raw, dict):
+                            a = str(opts_raw.get("A", "Option")).replace("```", "").strip()
+                            b = str(opts_raw.get("B", "Option")).replace("```", "").strip()
+                            c = str(opts_raw.get("C", "Option")).replace("```", "").strip()
+                            d = str(opts_raw.get("D", "Option")).replace("```", "").strip()
+                            labeled = [f"A. {a}", f"B. {b}", f"C. {c}", f"D. {d}"]
+                        else:
+                            opts = item.get("options", [])
+                            if not isinstance(opts, list):
+                                opts = []
+                            # Keep only first 4, enforce labels A-D
+                            opts = [str(o) for o in opts if isinstance(o, str)]
+                            # If options not labeled, label them
+                            for i, o in enumerate(opts[:4]):
+                                label = chr(65 + i)
+                                o = str(o).replace("```", "").strip()
+                                if is_option_like(o):
+                                    labeled.append(o)
+                                else:
+                                    labeled.append(f"{label}. {o}")
                         # Pad if fewer than 4
                         while len(labeled) < 4:
                             label = chr(65 + len(labeled))
@@ -595,7 +485,7 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
             # Final safety: ensure each MCQ has exactly 4 options and a valid answer
             cleaned_mcq = []
             for m in out["mcq_questions"]:
-                q = str(m.get("question", "")).strip()
+                q = str(m.get("question",""))
                 opts = [o for o in (m.get("options") or []) if isinstance(o, str)]
                 labeled = []
                 for i, o in enumerate(opts[:4]):
@@ -672,14 +562,12 @@ def build_graph(round_type: str = "technical_round1") -> StateGraph:
         return state
 
     sg = StateGraph(InterviewState)
-    sg.add_node("skill_extraction", skill_extraction)
-    sg.add_node("skill_matching", skill_matching)
-    sg.add_node("skill_sampling", skill_sampling)
+    sg.add_node("topic_extraction", topic_extraction)
+    sg.add_node("topic_selection", topic_selection)
     sg.add_node("generate", generate_questions)
-    sg.set_entry_point("skill_extraction")
-    sg.add_edge("skill_extraction", "skill_matching")
-    sg.add_edge("skill_matching", "skill_sampling")
-    sg.add_edge("skill_sampling", "generate")
+    sg.set_entry_point("topic_extraction")
+    sg.add_edge("topic_extraction", "topic_selection")
+    sg.add_edge("topic_selection", "generate")
     sg.set_finish_point("generate")
     return sg.compile()
 
@@ -767,8 +655,7 @@ def main():
     parser.add_argument("--target_role", required=True)
     parser.add_argument("--experience", required=True)
     parser.add_argument("--round", default="1", help="Interview round number")
-    parser.add_argument("--matched_sample_size", type=int, default=3, help="Number of matched skills to sample")
-    parser.add_argument("--unmatched_sample_size", type=int, default=2, help="Number of unmatched skills to sample")
+    parser.add_argument("--prev_used_hard", default="", help="Comma-separated list or JSON array of previously used hard topics (from round 1)")
     args = parser.parse_args()
 
     # Determine round type
@@ -798,25 +685,40 @@ def main():
             raise
     
     graph = build_graph(round_type)
-    init_state = {
+    # Parse prev_used_hard topics
+    prev_used_hard_topics: List[str] = []
+    try:
+        if args.prev_used_hard:
+            s = args.prev_used_hard.strip()
+            if s.startswith("["):
+                prev_used_hard_topics = json.loads(s)
+            else:
+                prev_used_hard_topics = [x.strip() for x in s.split(",") if x.strip()]
+    except Exception:
+        prev_used_hard_topics = []
+
+    state = {
         "resume_text": args.resume_text,
         "job_desc": job_desc,
-        "current_role": args.current_role,
         "target_role": args.target_role,
         "experience": args.experience,
-        "matched_sample_size": args.matched_sample_size,
-        "unmatched_sample_size": args.unmatched_sample_size,
+        "round": args.round,
+        "prev_used_hard_topics": prev_used_hard_topics,
     }
 
     try:
-        final_state = graph.invoke(init_state)
-        questions: List[str] = final_state.get("questions", [])
-        payload = {
+        final = graph.invoke(state)
+        questions = final.get("questions", {})
+        output = {
             "session_id": args.session_id,
-            "round": round_type,
             "questions": questions,
+            # Include selections for backend persistence
+            "easy_topic_skills": final.get("easy_topic_skills", []),
+            "hard_topic_skills": final.get("hard_topic_skills", []),
+            "selected_easy_topics": final.get("selected_easy_topics", []),
+            "selected_hard_topics": final.get("selected_hard_topics", []),
         }
-        print(json.dumps(payload))
+        print(json.dumps(output))
     except Exception as e:
         print(json.dumps({"error": str(e)}))
         raise

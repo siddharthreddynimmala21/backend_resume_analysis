@@ -17,10 +17,14 @@ const __dirname = path.dirname(__filename);
  */
 router.post('/validate', async (req, res) => {
     try {
-        const { sessionId, sendEmail } = req.body;
+        const { sessionId, round, sendEmail } = req.body;
 
         if (!sessionId) {
             return res.status(400).json({ error: 'Session ID is required' });
+        }
+        const roundNum = parseInt(round);
+        if (Number.isNaN(roundNum)) {
+            return res.status(400).json({ error: 'Round is required and must be a number' });
         }
 
         // Find the resume interview session
@@ -38,18 +42,32 @@ router.post('/validate', async (req, res) => {
             return res.status(404).json({ error: 'Resume interview not found' });
         }
 
-        // Debug: Log the complete resumeInterview structure
+        // Attempt to locate the round within rounds array; fallback to legacy fields
+        const usingRounds = Array.isArray(resumeInterview.rounds) && resumeInterview.rounds.length > 0;
+        const roundData = usingRounds ? (resumeInterview.rounds.find(r => r.round === roundNum) || null) : null;
+
+        // Debug logs
         console.log('Debug - Complete resumeInterview:', JSON.stringify(resumeInterview, null, 2));
-        console.log('Debug - resumeInterview.questions type:', typeof resumeInterview.questions);
-        console.log('Debug - resumeInterview.questions:', resumeInterview.questions);
+        console.log('Debug - usingRounds:', usingRounds);
+        if (usingRounds) console.log('Debug - Found roundData:', JSON.stringify(roundData, null, 2));
+
+        if (usingRounds && !roundData) {
+            return res.status(404).json({ error: 'Round not found for this resume interview' });
+        }
 
         // Check if answers have been submitted
-        if (!resumeInterview.submittedAt) {
-            return res.status(400).json({ error: 'Answers have not been submitted yet' });
+        if (usingRounds) {
+            if (!roundData?.submittedAt) {
+                return res.status(400).json({ error: 'Answers have not been submitted yet for this round' });
+            }
+        } else {
+            if (!resumeInterview.submittedAt) {
+                return res.status(400).json({ error: 'Answers have not been submitted yet' });
+            }
         }
 
         // Prepare data for Python validation script
-        const userAnswers = JSON.stringify(resumeInterview.answers);
+        const userAnswers = JSON.stringify(usingRounds ? (roundData?.answers || { mcq: {}, desc: {} }) : (resumeInterview.answers || { mcq: {}, desc: {} }));
 
         // Prepare questions with correct answers
         let questions = {
@@ -58,17 +76,18 @@ router.post('/validate', async (req, res) => {
         };
 
         // Handle questions structure (similar to AI interview but for resume interview)
-        if (resumeInterview.questions && typeof resumeInterview.questions === 'object') {
-            if (resumeInterview.questions.mcq_questions && Array.isArray(resumeInterview.questions.mcq_questions)) {
-                questions.mcq_questions = resumeInterview.questions.mcq_questions.map(q => ({
+        const qSource = usingRounds ? roundData?.questions : resumeInterview.questions;
+        if (qSource && typeof qSource === 'object') {
+            if (qSource.mcq_questions && Array.isArray(qSource.mcq_questions)) {
+                questions.mcq_questions = qSource.mcq_questions.map(q => ({
                     question: q.question,
                     options: q.options,
                     answer: q.answer
                 }));
             }
 
-            if (resumeInterview.questions.desc_questions && Array.isArray(resumeInterview.questions.desc_questions)) {
-                questions.desc_questions = resumeInterview.questions.desc_questions;
+            if (qSource.desc_questions && Array.isArray(qSource.desc_questions)) {
+                questions.desc_questions = qSource.desc_questions;
             }
         }
 
@@ -82,11 +101,12 @@ router.post('/validate', async (req, res) => {
         console.log('Debug - Processed Questions:', questionsJson);
         console.log('Debug - MCQ Questions Count:', questions.mcq_questions.length);
         console.log('Debug - Descriptive Questions Count:', questions.desc_questions.length);
-        console.log('Debug - User MCQ Answers Count:', Object.keys(resumeInterview.answers?.mcq || {}).length);
-        console.log('Debug - User Descriptive Answers Count:', Object.keys(resumeInterview.answers?.desc || {}).length);
+        console.log('Debug - User MCQ Answers Count:', Object.keys((usingRounds ? (roundData?.answers?.mcq || {}) : (resumeInterview.answers?.mcq || {}))).length);
+        console.log('Debug - User Descriptive Answers Count:', Object.keys((usingRounds ? (roundData?.answers?.desc || {}) : (resumeInterview.answers?.desc || {}))).length);
 
         // Check if the answers structure is as expected
-        if (!resumeInterview.answers?.mcq || !resumeInterview.answers?.desc) {
+        const answersRef = usingRounds ? roundData?.answers : resumeInterview.answers;
+        if (!answersRef?.mcq || !answersRef?.desc) {
             console.warn('Warning: User answers structure is not as expected. Missing mcq or desc fields.');
         }
 
@@ -139,17 +159,39 @@ router.post('/validate', async (req, res) => {
                 }
 
                 // Update the database with validation results
-                const updateResult = await InterviewSession.updateOne(
-                    {
-                        'resumeInterviews.sessionId': sessionId
-                    },
-                    {
-                        $set: {
-                            'resumeInterviews.$.validation': validationResult.validation_report,
-                            'resumeInterviews.$.validatedAt': new Date()
+                let updateResult;
+                if (usingRounds) {
+                    updateResult = await InterviewSession.updateOne(
+                        {
+                            'resumeInterviews.sessionId': sessionId,
+                            'resumeInterviews.rounds.round': roundNum
+                        },
+                        {
+                            $set: {
+                                'resumeInterviews.$[ri].rounds.$[r].validation': validationResult.validation_report,
+                                'resumeInterviews.$[ri].rounds.$[r].validatedAt': new Date()
+                            }
+                        },
+                        {
+                            arrayFilters: [
+                                { 'ri.sessionId': sessionId },
+                                { 'r.round': roundNum }
+                            ]
                         }
-                    }
-                );
+                    );
+                } else {
+                    updateResult = await InterviewSession.updateOne(
+                        {
+                            'resumeInterviews.sessionId': sessionId
+                        },
+                        {
+                            $set: {
+                                'resumeInterviews.$.validation': validationResult.validation_report,
+                                'resumeInterviews.$.validatedAt': new Date()
+                            }
+                        }
+                    );
+                }
 
                 if (updateResult.modifiedCount === 0) {
                     return res.status(500).json({ error: 'Failed to update validation results' });

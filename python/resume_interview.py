@@ -313,8 +313,13 @@ def build_resume_interview_graph() -> StateGraph:
         """Agent 6: Generate targeted questions based on strategy and focus area."""
         
         focus_area = state.get("focus_area")
+        round_str = str(state.get("round", "1")).strip()
+        try:
+            round_num = int(round_str)
+        except Exception:
+            round_num = 1
         
-        # Focus-specific prompts
+        # Prompt templates
         prompts = {
             "skills": """
             You are an experienced technical interviewer. Generate interview questions focused on SKILLS assessment based on the candidate's actual resume.
@@ -494,10 +499,118 @@ def build_resume_interview_graph() -> StateGraph:
                 "How do you approach working with difficult team members or stakeholders?"
               ]
             }}
+            """,
+            "managerial": """
+            You are an experienced ENGINEERING MANAGER interviewer. Generate interview questions focused ONLY on MANAGERIAL competencies.
+            Do NOT ask technical or coding questions. Focus strictly on leadership and people/process management.
+            
+            CANDIDATE CONTEXT:
+            {focus_content}
+            
+            ROLE CONTEXT AND REQUIREMENTS:
+            {job_requirements}
+            
+            TARGET ROLE: {target_role}
+            EXPERIENCE: {experience} years
+            
+            INSTRUCTIONS:
+            - Emphasize leadership, team management, stakeholder management, hiring, performance reviews, coaching/mentoring
+            - Include situational and behavioral questions (e.g., conflict resolution, prioritization, delivery under constraints)
+            - Cover process areas (agile rituals, execution, roadmap, risk management, cross-functional collaboration)
+            - Avoid any low-level technical/coding/system design content
+            
+            Generate EXACTLY 5 MCQ questions and 3 descriptive questions.
+            Return ONLY valid JSON in this exact format:
+            {
+              "mcq_questions": [
+                {
+                  "question": "What is the most effective first step when resolving a conflict between two senior engineers?",
+                  "options": [
+                    "A. Escalate to HR immediately",
+                    "B. Schedule a private meeting with both to understand perspectives",
+                    "C. Announce the decision publicly to set a precedent",
+                    "D. Ignore it and focus on delivery"
+                  ],
+                  "answer": "B"
+                },
+                {
+                  "question": "When a project is at risk due to scope creep, what should a manager prioritize?",
+                  "options": [
+                    "A. Extend working hours",
+                    "B. Re-baseline scope with stakeholders and adjust plan",
+                    "C. Assign more junior engineers",
+                    "D. Freeze all new features without discussion"
+                  ],
+                  "answer": "B"
+                }
+              ],
+              "desc_questions": [
+                "Describe a time you had to balance delivery pressure with team well-being. How did you approach it?",
+                "How do you handle a high-performing engineer who is disruptive to team culture?",
+                "Explain your approach to performance management and growth plans for your reports."
+              ]
+            }
+            """,
+            "hr": """
+            You are an HR interviewer. Generate interview questions focused ONLY on HR themes (culture fit, motivation, values, communication, ethics).
+            Do NOT ask technical or managerial process questions.
+            
+            CANDIDATE BACKGROUND:
+            {focus_content}
+            
+            ROLE CONTEXT AND REQUIREMENTS:
+            {job_requirements}
+            
+            TARGET ROLE: {target_role}
+            EXPERIENCE: {experience} years
+            
+            INSTRUCTIONS:
+            - Focus on values, collaboration style, communication, resilience, motivation, long-term goals
+            - Explore alignment with company culture and handling of interpersonal situations
+            - Avoid technical depth and team/process management specifics
+            
+            Generate EXACTLY 5 MCQ questions and 3 descriptive questions.
+            Return ONLY valid JSON in this exact format:
+            {
+              "mcq_questions": [
+                {
+                  "question": "Which action best demonstrates ownership in a team setting?",
+                  "options": [
+                    "A. Waiting for explicit instructions",
+                    "B. Taking initiative to identify and solve problems",
+                    "C. Avoiding risks to prevent mistakes",
+                    "D. Delegating without follow-up"
+                  ],
+                  "answer": "B"
+                },
+                {
+                  "question": "What is the most appropriate response to constructive feedback?",
+                  "options": [
+                    "A. Justify your approach",
+                    "B. Disagree immediately",
+                    "C. Listen, clarify, and plan improvements",
+                    "D. Ignore and continue"
+                  ],
+                  "answer": "C"
+                }
+              ],
+              "desc_questions": [
+                "Tell me about a time you faced a significant setback. How did you handle it and what did you learn?",
+                "Describe your ideal team culture and how you contribute to building it.",
+                "What motivates you in your career, and how do you maintain that motivation over time?"
+              ]
+            }
             """
         }
         
-        prompt_template = prompts.get(focus_area, prompts["skills"])
+        # Select prompt based on round
+        if round_num == 3:
+            prompt_template = prompts["managerial"]
+        elif round_num == 4:
+            prompt_template = prompts["hr"]
+        else:
+            # Technical rounds (1 and 2) use existing focus_area mapping
+            prompt_template = prompts.get(focus_area, prompts["skills"])
         prompt = ChatPromptTemplate.from_template(prompt_template)
         
         try:
@@ -561,13 +674,13 @@ def build_resume_interview_graph() -> StateGraph:
             # Ensure we have the right number of questions
             while len(validated_mcq) < 5:
                 validated_mcq.append({
-                    "question": f"Sample technical question {len(validated_mcq) + 1}",
+                    "question": f"Sample question {len(validated_mcq) + 1}",
                     "options": ["A. Option 1", "B. Option 2", "C. Option 3", "D. Option 4"],
                     "answer": "A"
                 })
                 
             while len(validated_desc) < 3:
-                validated_desc.append(f"Describe your experience with relevant technologies for this role.")
+                validated_desc.append(f"Describe your relevant experience for this role.")
             
             state["questions"] = {
                 "mcq_questions": validated_mcq,
@@ -713,6 +826,7 @@ def main():
         "target_role": args.target_role,
         "experience": args.experience,
         "focus_area": args.focus_area,
+        "round": args.round,
     }
 
     try:

@@ -26,15 +26,22 @@ const pdfExtract = new PDFExtract();
 // POST /resume-interview/start
 router.post('/start', upload.single('resume'), async (req, res) => {
     try {
-        // Validate file
-        if (!req.file) {
-            return res.status(400).json({ error: 'No PDF file uploaded', message: 'Please select a PDF file to upload' });
-        }
-        if (req.file.mimetype !== 'application/pdf') {
-            return res.status(400).json({ error: 'Invalid file type', message: 'Only PDF files are allowed' });
-        }
-        if (!req.file.buffer || req.file.buffer.length === 0) {
-            return res.status(400).json({ error: 'Invalid PDF file', message: 'The uploaded PDF file is empty or corrupted' });
+        // Determine round early to decide file requirement
+        const { round: roundBody } = req.body;
+        const interviewRound = roundBody || '1';
+        const isFirstRoundEarly = String(interviewRound) === '1';
+
+        // Validate file only for first round
+        if (isFirstRoundEarly) {
+            if (!req.file) {
+                return res.status(400).json({ error: 'No PDF file uploaded', message: 'Please select a PDF file to upload' });
+            }
+            if (req.file.mimetype !== 'application/pdf') {
+                return res.status(400).json({ error: 'Invalid file type', message: 'Only PDF files are allowed' });
+            }
+            if (!req.file.buffer || req.file.buffer.length === 0) {
+                return res.status(400).json({ error: 'Invalid PDF file', message: 'The uploaded PDF file is empty or corrupted' });
+            }
         }
 
         const token = req.headers.authorization?.split('Bearer ')[1];
@@ -42,26 +49,29 @@ router.post('/start', upload.single('resume'), async (req, res) => {
             return res.status(401).json({ error: 'Unauthorized', message: 'No authorization token provided' });
         }
 
-        // Parse PDF to extract text
+        // Parse PDF to extract text if provided; for subsequent rounds allow empty
         let extractedText = '';
-        try {
-            const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
-            extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
-        } catch (parseError) {
-            return res.status(400).json({ error: 'PDF Parsing Failed', message: 'Unable to extract text from the PDF', details: parseError.message || 'Unknown parsing error' });
-        }
-        if (!extractedText) {
-            return res.status(400).json({ error: 'No Text Extracted', message: 'No text could be extracted from the PDF' });
+        if (req.file) {
+            try {
+                const pdfData = await pdfExtract.extractBuffer(req.file.buffer);
+                extractedText = pdfData.pages.map(page => page.content.map(item => item.str).join(' ')).join('\n').trim();
+            } catch (parseError) {
+                return res.status(400).json({ error: 'PDF Parsing Failed', message: 'Unable to extract text from the PDF', details: parseError.message || 'Unknown parsing error' });
+            }
+            if (!extractedText) {
+                return res.status(400).json({ error: 'No Text Extracted', message: 'No text could be extracted from the PDF' });
+            }
         }
 
         // Get other fields and user
         const { currentRole, targetRole, experience, jobDescription, jobDescriptionOption, focusArea, userId: userIdBody, round, sessionId: sessionIdBody } = req.body;
         const authUserId = req.user?.id; // if you use auth middleware
         const userId = authUserId || userIdBody || 'guest';
-        const interviewRound = round || '1'; // Default to round 1
+        const roundNumber = parseInt(interviewRound);
 
-        // Generate unique session ID for resume-based interviews
-        const sessionId = sessionIdBody || `resume-${userId}-${Date.now()}-${uuidv4()}`;
+        // Resolve sessionId: for round 1 generate a new one; for subsequent rounds reuse provided sessionId
+        const isFirstRound = String(interviewRound) === '1';
+        const sessionId = isFirstRound ? (sessionIdBody || `resume-${userId}-${Date.now()}-${uuidv4()}`) : (sessionIdBody || `resume-${userId}-${Date.now()}-${uuidv4()}`);
 
         if (!currentRole || !targetRole || !experience || !focusArea) {
             return res.status(400).json({ error: 'Missing fields', message: 'Current role, target role, experience, and focus area are required.' });
@@ -159,34 +169,62 @@ router.post('/start', upload.single('resume'), async (req, res) => {
             const decodedToken = jwt.decode(token);
             const userId = decodedToken.userId;
 
-            // persist to DB - using a separate collection field for resume interviews
+            // persist to DB - using a rounds array for resume interviews (multi-round support)
             try {
-                const userInterview = await InterviewSession.findOne({ userId: userId });
-
-                if (userInterview) {
-                    // Add to existing user's resume interviews
-                    if (!userInterview.resumeInterviews) {
-                        userInterview.resumeInterviews = [];
-                    }
-                    userInterview.resumeInterviews.push({
-                        sessionId,
-                        focusArea,
-                        questions: payload.questions,
-                        createdAt: new Date()
-                    });
-                    await userInterview.save();
-                } else {
-                    // Create new user interview session
+                const existing = await InterviewSession.findOne({ userId: userId });
+                if (!existing) {
+                    // Create new user interview with first round
                     await InterviewSession.create({
                         userId,
-                        interviews: [], // Keep existing AI interviews separate
-                        resumeInterviews: [{
+                        interviews: [],
+                        resumeInterviews: [
+                            {
+                                sessionId,
+                                focusArea,
+                                rounds: [
+                                    {
+                                        round: roundNumber,
+                                        questions: payload.questions,
+                                    },
+                                ],
+                                // Legacy fields for backward compatibility
+                                questions: payload.questions,
+                                createdAt: new Date(),
+                            },
+                        ],
+                    });
+                } else {
+                    // Ensure array exists
+                    existing.resumeInterviews = existing.resumeInterviews || [];
+
+                    // Try to find existing resume interview by sessionId
+                    const idx = existing.resumeInterviews.findIndex((ri) => ri.sessionId === sessionId);
+                    if (idx === -1) {
+                        // New resume interview entry (likely round 1)
+                        existing.resumeInterviews.push({
                             sessionId,
                             focusArea,
+                            rounds: [
+                                {
+                                    round: roundNumber,
+                                    questions: payload.questions,
+                                },
+                            ],
                             questions: payload.questions,
-                            createdAt: new Date()
-                        }]
-                    });
+                            createdAt: new Date(),
+                        });
+                        await existing.save();
+                    } else {
+                        // Append as a new round to existing resume interview
+                        existing.resumeInterviews[idx].rounds = existing.resumeInterviews[idx].rounds || [];
+                        existing.resumeInterviews[idx].rounds.push({
+                            round: roundNumber,
+                            questions: payload.questions,
+                        });
+                        // Keep legacy questions updated for compatibility with old flows
+                        existing.resumeInterviews[idx].questions = payload.questions;
+                        await existing.save();
+                    }
                 }
             } catch (dbErr) {
                 console.error('Failed to save resume interview session:', dbErr);
@@ -205,6 +243,7 @@ router.post('/start', upload.single('resume'), async (req, res) => {
                 success: true,
                 sessionId,
                 focusArea,
+                round: roundNumber,
                 questions: clientQuestions
             });
         });
